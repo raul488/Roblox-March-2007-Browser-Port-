@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About the Roblox 0.3.368 (2007) browser port</title>
+<meta name="description" content="What this project is: the March 2007 Roblox client (0.3.368.0) rebuilt for the browser in HTML, JavaScript and WebGL, using the decompilation and the shipped content as its only source.">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="https://raul488.github.io/Roblox-March-2007-Browser-Port-/web/about.html">
+<style>
+  html,body{ margin:0; background:#18354f; color:#1b1b1b;
+             font-family:'Comic Sans MS','Comic Sans','Segoe UI',sans-serif; }
+  .card{ max-width:640px; width:92%; margin:32px auto 56px; padding:22px 26px;
+         background:linear-gradient(#fdfdfd,#e8eef5); border:1px solid #8fa3b6;
+         box-shadow:0 6px 24px rgba(0,0,0,.6); line-height:1.55; font-size:14px; }
+  h1{ font-size:24px; color:#e4443c; margin:0 0 4px; letter-spacing:.5px; }
+  h2{ font-size:15px; color:#24405c; margin:22px 0 6px; }
+  .sub{ color:#425d75; font-size:12px; margin-bottom:14px; }
+  a{ color:#2a5d92; }
+  code{ background:#eef3f8; border:1px solid #d3dde7; padding:0 3px; font-size:12px; }
+  .play{ display:inline-block; margin:18px 0 4px; padding:8px 18px; font:inherit; font-size:14px;
+         color:#fff; background:linear-gradient(#84b3f2,#5d90d8); border:1px solid #4c74a8;
+         text-decoration:none; }
+  .play:hover{ background:#5d90d8; }
+  .note{ font-size:11.5px; color:#5a6b7c; margin-top:16px; border-top:1px dashed #c3cfdb; padding-top:10px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Roblox 0.3.368 — browser port</h1>
+  <div class="sub">The March 2007 client, rebuilt for HTML, JavaScript and WebGL</div>
+
+  <p>This is a playable port of the original Roblox client, version 0.3.368.0, as
+  shipped in March 2007. It runs entirely in the browser: the 3D viewport, the
+  physics, the 2007 interface chrome, the chat and the tool hotbar are all
+  reimplemented in JavaScript on top of WebGL, with no server, no account and no
+  installation.</p>
+
+  <p>The engine behaviour was reconstructed from the decompilation of the shipped
+  executable and from the original content files, which are used as the only
+  source of truth for constants, colours, UI layout and script behaviour.</p>
+
+  <h2>What's included</h2>
+  <ul>
+    <li>Six classic places: Crossroads, Happy Home in Robloxia, Roblox HQ,
+        Humanoid Harvester Horror, Tabula Rasa and Haunted Mansion.</li>
+    <li>The original character rig, avatar body colours, T-shirt decals and
+        Super Safe Chat phrase book.</li>
+    <li>The 2007 HUD: player list, health bar, backpack hotbar, camera pad and
+        the client's own toolbar labels.</li>
+    <li>Places' embedded Lua scripts, run through a built-in Lua layer.</li>
+    <li>Loading your own <code>.rbxl</code>, <code>.rbxlx</code> or
+        <code>.rbxm</code> XML place files.</li>
+  </ul>
+
+  <h2>Controls</h2>
+  <p><b>WASD</b> to move, <b>Space</b> to jump, <b>right-drag</b> to turn the
+  camera, mouse wheel to zoom, <b>/</b> to chat, <b>1–0</b> for the hotbar.
+  Ladders and trusses climb with <b>W</b>/<b>S</b>.</p>
+
+  <h2>Technical notes</h2>
+  <p>Everything the client needs — place data, sounds, the character rig, fonts
+  and three.js — is bundled locally. There is no <code>HttpService</code>, so
+  place scripts have no network access, and a Content-Security-Policy blocks
+  remote assets referenced by imported places.</p>
+
+  <p class="note">Unofficial preservation project. Not affiliated with or
+  endorsed by Roblox Corporation. Roblox is a trademark of Roblox Corporation.
+  The 2007 client and its assets remain the property of their respective
+  owners; they are included here for historical preservation.</p>
+
+  <a class="play" href="./">Back to the client</a>
+</div>
+</body>
+</html>
