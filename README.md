@@ -13,13 +13,25 @@ There is no online features due to possible security risks.
 
 Works from `file://`  no server needed:
 
-1. Open `client/web/index.html` in any modern browser.
+1. Open `web/index.html` in any modern browser.
 2. Pick a place (Crossroads, HappyHomeInRobloxia, HumanoidHarvesterHorror,
    RobloxHQ, TabulaRasa, Haunted Mansion) or drag a `.rbxl`/`.rbxm` XML file
    onto the window.
 
 Everything (place data, sounds, character.rbxm, three.js r128) is embedded
 in the `web/` tree  no network, no install.
+
+## Content and trust
+
+The bundled places are archived 2007 Roblox content, included for
+preservation. Imported `.rbxl`/`.rbxm` files run their embedded scripts on
+the built-in Lua layer, so only load files you trust.
+
+The client ships a Content-Security-Policy (see `web/index.html`) that
+allows only local and embedded (`data:`/`blob:`) resources. Place files
+cannot load remote images, audio or scripts, so a `TextureId`/`SoundId`
+pointing at an outside URL is simply blocked. There is no `HttpService`
+either, so place scripts have no network access at all.
 
 ## Controls (2007 client)
 

@@ -2,6 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<!-- Content-Security-Policy: everything this client needs is local or
+     embedded, so nothing external is allowed.  This keeps a place file's
+     TextureId/SoundId URLs (and any injected markup) from phoning home.
+     - 'unsafe-inline' is required by the existing inline <style> block and
+       the toolbar's onclick= handlers.
+     - data: carries the embedded fonts, sky textures, sounds and the
+       base64 assets some places ship; blob: is the T-shirt preview.
+     - file: keeps double-click (file://) usage working, where 'self' does
+       not match a usable origin. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob:; script-src 'self' file: 'unsafe-inline'; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data: blob:; media-src 'self' file: data: blob:; font-src 'self' file: data:; connect-src 'self' file:; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>ROBLOX 0.3.368 (browser decomp port)</title>
 <style>
 /* 2007-era Office2007Blue-ish chrome.
