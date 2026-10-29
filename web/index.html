@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ROBLOX 0.3.368 (browser decomp port)</title>
+<style>
+/* 2007-era Office2007Blue-ish chrome.
+ * Typography = the real site/client look: Comic Sans MS Regular for body
+ * text (descriptions/blurbs at 10pt–12pt) and comicbd.ttf bold on nav
+ * buttons, title headers, and in-game hints/banners/modals (the files are
+ * embedded by build-coreAssets.js and registered in js/fonts.js). */
+html,body{ height:100%; margin:0; overflow:hidden; background:#7b9db7;
+           font-family:'Comic Sans MS','Comic Sans','Segoe UI',sans-serif; }
+body{ color:#111; }
+/* site body copy: Comic Sans MS Regular (comic.ttf)  descriptions,
+ * blurbs and list rows; chat lines stay regular too */
+.subtitle,.tip,.cfgRow label,.tshirtLabel,.cfgHint,#openFile,
+.pl,.chatLine,.tool span,#chatLog{ font-weight:normal; }
+/* nav buttons/title headers + in-game hints/banners/modals:
+ * bold forced via font-weight (comicbd.ttf), the 2007 site's trick */
+#menubar span,#playerList b,#notif .noti,#messageBox,#infoLine,
+#loadingBar b,.partTabs span,.tshirtBtn{ font-weight:bold; }
+#view{ position:fixed; inset:0; }
+canvas.viewport{ display:block; width:100%; height:100%; }
+/* loading bar */
+#loadingBar{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:120; background:rgba(40,60,80,.55); }
+#loadingBar .box{ background:#f0f0f0; border:1px solid #9aa9b8; padding:16px 26px; box-shadow:0 4px 22px rgba(0,0,0,.5); }
+#loadingBar b{ color:#24405c; }
+.pb{ width:260px; height:16px; background:#d6dee7; border:1px solid #a4b2c0; margin-top:10px; overflow:hidden; }
+.pb>div{ height:100%; width:40%; background:linear-gradient(#84b3f2,#5d90d8); border-right:1px solid #4c74a8; animation:pblide 1.1s ease-in-out infinite alternate; }
+@keyframes pblide{ from{ transform:translateX(-60%);} to{ transform:translateX(160%);} }
+/* main login layout  the start page is the scrollable "site": it opens
+ * at the very top and scrolls when the window is shorter than the page.
+ * Plain block flow on purpose: a fixed-height flex COLUMN container
+ * shrink-compresses its child before overflowing (flex-shrink:1 trap)
+ * and never shows a scrollbar. */
+#login{ position:fixed; inset:0; overflow-y:auto; overflow-x:hidden; z-index:100;
+        background:url('content/sky/null_plainsky512_up.jpg') center/cover, #18354f; }
+#login .inner{ margin:32px auto 56px; max-width:560px; width:92%; background:linear-gradient(#fdfdfd,#e8eef5); border:1px solid #8fa3b6; padding:20px 26px;
+               box-shadow:0 6px 24px rgba(0,0,0,.6); }
+.titlelogo{ font-weight:700; letter-spacing:1px; color:#e4443c; font-size:30px; }   /* title header = bold (comicbd) */
+.subtitle{ color:#425d75; font-size:12px; margin-top:2px; }
+.placeList{ margin-top:14px; max-height:36vh; overflow:auto; border:1px solid #b3c1cf; background:#fff; }
+/* no-WebGL warning: the client cannot render without a GL context */
+#webglWarn{ display:none; margin-top:12px; padding:9px 11px; border:1px solid #c46a5a;
+            background:#fdecea; color:#7a2018; font-size:12px; line-height:1.55; }
+#webglWarn b{ display:block; font-size:13px; margin-bottom:2px; }
+#webglWarn code{ font-size:11px; background:#f6d7d2; padding:0 3px; }
+#webglRetry{ margin-top:7px; font-size:11.5px; padding:3px 9px; border:1px solid #a4b2c0;
+             background:linear-gradient(#fdfdfd,#dde6f0); cursor:pointer; font-family:inherit; }
+#webglRetry:hover{ background:#dcebfb; }
+.pl{ padding:8px 12px; border-bottom:1px solid #e3e9ef; cursor:pointer; font-size:14px; }
+.pl:hover{ background:#dcebfb; }
+#openFile{ display:block; margin-top:10px; font-size:12px; color:#345; }
+.tip{ font-size:11px; color:#567; margin-top:12px; line-height:1.55; }
+/* bouncing logo  the span is what flies/squishes, anchored at its baseline
+ * (transform-origin bottom) so the "ground" is the invisible flat under it */
+.titlelogo span{ display:inline-block; transform-origin:50% 100%; will-change:transform; }
+/* start-page avatar config: username box + body-color GUI (kept simple) */
+.avatarCfg{ margin-top:12px; border-top:1px dashed #c3cfdb; padding-top:10px; }
+.cfgRow{ display:flex; align-items:center; gap:8px; }
+.cfgRow label{ font-size:12px; color:#425d75; white-space:nowrap; }
+#userName{ flex:1; min-width:0; border:1px solid #a4b2c0; padding:4px 7px; font-size:13px;
+           font-family:inherit; background:#fff; outline:none; cursor:text; }
+#userName:focus{ border-color:#5c9be0; }
+.partTabsRow{ display:flex; align-items:center; gap:8px; margin-top:10px; }
+.partTabs{ display:flex; gap:4px; flex:1; }
+.partTabs span{ font-size:11.5px; padding:3px 9px; border:1px solid #a4b2c0; color:#345; cursor:pointer;
+                background:linear-gradient(#fdfdfd,#dde6f0); }
+.partTabs span:hover{ background:#dcebfb; }
+.partTabs span.on{ background:linear-gradient(#8fc3f2,#5c9be0); color:#fff; border-color:#274a68; cursor:pointer; }
+.partTabs span i{ display:inline-block; width:13px; height:13px; margin-left:6px; vertical-align:-2px;
+                  border:1px solid rgba(0,0,0,.45); background:#ccc; }
+.partTabs span.on i{ border-color:rgba(0,0,0,.6); }
+.swatches{ display:grid; grid-template-columns:repeat(12,1fr); gap:3px; margin-top:6px; }
+.swatches i{ display:block; aspect-ratio:1; border:1px solid rgba(0,0,0,.38); cursor:pointer; }
+.swatches i:hover{ outline:2px solid #24405c; outline-offset:-1px; }
+.swatches i.on{ outline:2px solid #e4443c; outline-offset:-1px; }
+.cfgHint{ font-size:10.5px; color:#789; margin-top:6px; }
+/* start-page site chrome: the 2007 site's scenery masthead banner
+   (900x72 → scaled to the card, full bleed) and the "FREE - Download
+   and Play!" CTA (399x53, shown at natural size, 508px content fits) */
+.siteBanner{ display:block; margin:-20px -26px 14px; width:calc(100% + 52px); height:auto;
+             -webkit-user-drag:none; }
+.dlCta{ display:block; margin:16px auto 0; max-width:100%; height:auto; border:0; padding:0;
+        background:none; cursor:pointer; -webkit-user-drag:none; }
+/* T-shirt picker (ShirtGraphic.TextureId)  same chrome as the color rows */
+.tshirtRow{ display:flex; align-items:center; gap:8px; margin-top:10px; }
+.tshirtLabel{ font-size:12px; color:#425d75; white-space:nowrap; }
+.tshirtBtn{ font-size:11.5px; padding:3px 9px; border:1px solid #a4b2c0; color:#345; cursor:pointer;
+            background:linear-gradient(#fdfdfd,#dde6f0); font-family:inherit; }
+.tshirtBtn:hover{ background:#dcebfb; }
+#tshirtFile{ display:none; }
+.tshirtPreview{ margin-top:8px; }
+.tshirtTorso{ width:96px; height:96px; margin:0 auto; border:1px solid #a4b2c0;
+              background:linear-gradient(#fdfdfd,#dde6f0); display:flex; align-items:center;
+              justify-content:center; image-rendering:auto; }
+.tshirtTorso img{ max-width:84px; max-height:84px; }
+/* 2007 client chrome.  The toolbar labels are the client's own button
+ * strings ("Toolbox", "Edit Mode", "Help...", "Fullscreen", "Exit" are
+ * contiguous in Roblox.exe at 0x3bc2e0..0x3bc2c4).  The five 100px
+ * toolbar cells, the 178px Player List panel, the 96x96 backpack slots
+ * and the 2x2 camera buttons reproduce the shipped client's HUD. */
+#menubar{ display:none; position:fixed; top:0; left:0; z-index:42; height:24px; color:#333; font-size:13px;
+          background:rgba(120,120,120,0.6); border:0; border-bottom:1px solid #666;
+          align-items:center; gap:0; cursor:default; }
+#menubar span{ display:flex; align-items:center; justify-content:flex-start; width:100px; height:100%;
+               box-sizing:border-box; padding:0 10px; border-radius:0; white-space:nowrap; }
+#menubar span:hover{ background:#c8c8c8; }
+#playerList{ display:none; position:fixed; top:8px; right:8px; width:178px; z-index:43;
+             background:rgba(120,120,120,0.6); padding:4px 6px 6px; }
+#playerList b{ display:block; font-size:14px; color:#ffffff; text-shadow:0 1px 1px rgba(0,0,0,0.45); margin-bottom:2px; }
+#playerList .plrow{ font-size:13px; color:#0000ff; text-shadow:none; }
+/* HealthHud: the 2007 widget is a 10x100 vertical bar under the Player
+ * List, green at full health and red above the fill as health drops
+ * (FUN_0060d5f0; colour FUN_005a2dc0 = 0.506,0.773,0.086).  The blue
+ * "Health" caption sits below it (FUN_005007d0). */
+#healthHud{ display:none; position:fixed; top:104px; right:8px; width:90px; z-index:44;
+            flex-direction:column; align-items:center; pointer-events:none; }
+#healthBar{ width:10px; height:100px; background:#ff0000; position:relative; }
+#healthFill{ position:absolute; left:0; right:0; bottom:0; height:100%; background:rgb(129,197,22); }
+#healthLabel{ color:#0000ff; font-size:18px; font-weight:bold; line-height:20px; margin-top:2px; }
+/* 2007 chat: the history is the top-left fold under the toolbar, one
+ * 12px Comic Sans line on 14px pitch, each line shrink-wrapped by the
+ * client grey (FUN_00551ab0 = 0.6,0.6,0.6 alpha 0.6).  The native edit
+ * prompt is hidden until the fold is clicked or "/" is pressed; the
+ * bubble button joins it then. */
+#chatPanel{ display:none; position:fixed; left:0; top:26px; z-index:50; width:auto; max-width:100vw; }
+#chatLog{ max-height:84px; overflow:hidden; font-size:12px; line-height:14px; padding:0; text-shadow:none; }
+#chatLog .chatLine{ display:flex; width:max-content; max-width:100vw; background:rgba(153,153,153,0.6);
+                    padding:0 2px; line-height:14px; white-space:nowrap; }
+#chatLog .chatLine b{ flex:0 0 auto; min-width:16px; margin-right:4px; font-weight:normal; }
+#chatLog .chatLine span{ flex:0 0 auto; color:#ffffff; }
+#chatInput{ display:block; position:fixed; left:0; right:0; bottom:0; width:100%; height:28px; box-sizing:border-box;
+            background:#b8b8b8; border:0; border-top:1px solid #777; color:#333; padding:4px 8px 4px 42px;
+            font-size:13px; outline:none; font-family:inherit; z-index:52; }
+#chatInput:focus{ background:#c8c8c8; }
+/* Super Safe Chat: ChatButton (32x23 Chat.png) + ChatMenuPanel above the
+ * chat fold.  Four art states are the engine's FUN_005e8740 suffixes.
+ * The bubble sits immediately left of the always-visible chat bar. */
+#safeChatBtn{ position:fixed; left:4px; bottom:2px; z-index:53;
+              width:32px; height:23px; padding:0; margin:0; border:0; background:transparent;
+              cursor:pointer; }
+#safeChatBtn img{ width:32px; height:23px; display:block; -webkit-user-drag:none; }
+#safeChatBtn:disabled{ cursor:default; }
+#safeChatPanel{ position:fixed; left:6px; bottom:34px; min-width:196px; max-width:260px; max-height:60vh;
+                overflow-y:auto; z-index:51; background:rgba(200,200,200,0.94); border:1px solid #8b8b8b;
+                box-shadow:0 2px 6px rgba(0,0,0,0.35); padding:2px; }
+#safeChatPanel .scTitle{ font-weight:bold; font-size:11px; color:#333; padding:3px 7px; border-bottom:1px solid #a6a6a6;
+                         margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#safeChatPanel .scRow{ display:block; width:100%; text-align:left; background:none; border:0; font:inherit;
+                       font-size:12.5px; color:#111; padding:3px 8px; cursor:pointer; white-space:nowrap; }
+#safeChatPanel .scRow:hover, #safeChatPanel .scRow:focus{ background:#316ac5; color:#fff; outline:none; }
+#safeChatPanel .scBack{ color:#345; font-size:11.5px; }
+#notif{ position:fixed; right:14px; bottom:140px; z-index:80; color:#fff; font-size:13px; text-shadow:0 1px 3px #000; text-align:right; }
+.noti{ padding:3px 0; transition:opacity .5s; }
+/* classic BackpackItem strip: 96x96 cells flush at the bottom-left,
+ * translucent grey backdrop, 80px icon, number in a grey box at the
+ * bottom-left (not the modern blue gradient/top-left counter) */
+#hotbar{ display:none; position:fixed; left:0; bottom:28px; z-index:45; gap:0; }
+.tool{ width:96px; height:96px; align-items:center; justify-content:center; position:relative; cursor:pointer;
+       background:rgba(190,190,190,0.5); border:0; display:flex; }
+.tool:hover{ background:rgba(220,220,220,0.62); }
+.tool.active{ background:rgba(240,240,240,0.75); }
+.tool img{ width:80px; height:80px; object-fit:contain; -webkit-user-drag:none; }
+.tool span{ position:absolute; left:3px; bottom:3px; width:19px; height:19px; line-height:19px;
+            text-align:center; font-size:12px; color:#222; background:#d4d0c8;
+            border:1px solid #7f7f7f; text-shadow:none; }
+/* Report button: the shipped ReportAbuse art, sitting above the camera
+ * pad in the client's bottom-right stack */
+#reportBtn{ display:none; position:fixed; right:8px; bottom:94px; z-index:46;
+            width:48px; height:48px; padding:0; border:0; background:transparent; cursor:pointer; }
+#reportBtn img{ width:48px; height:48px; display:block; -webkit-user-drag:none; }
+/* camera pad: the four shipped CameraTiltUp/ZoomIn/TiltDown/ZoomOut
+ * circle icons (shipped 24x24), 2x2 at the bottom-right */
+#cameraControls{ display:none; position:fixed; right:8px; bottom:36px; z-index:46;
+                 grid-template-columns:24px 24px; gap:5px; }
+#cameraControls img{ width:24px; height:24px; cursor:pointer; -webkit-user-drag:none; }
+#cameraControls img:hover{ filter:brightness(1.12); }
+#messageBox{ display:none; position:fixed; left:50%; transform:translateX(-50%); top:14vh; z-index:70; font-size:24px; color:#fff;
+             text-shadow:0 2px 4px #111; transition:opacity .35s; text-align:center; }
+#hintBox{ display:none; position:fixed; left:50%; transform:translateX(-50%); top:8vh; z-index:69;
+          font-size:17px; color:#ffef9f; text-shadow:0 2px 4px #111; text-align:center; max-width:80vw; }
+#infoLine{ display:none; position:fixed; left:8px; bottom:136px; color:#dff; font-size:11px; text-shadow:0 1px 2px #000; z-index:60; }
+/* join-time performance warning for places with a high Workspace part
+   count (ui.warnIfHighPartCount); click dismisses it */
+#perfWarn{ display:none; position:fixed; left:50%; top:22vh; transform:translateX(-50%); z-index:71;
+           max-width:86vw; padding:7px 16px; background:rgba(60,25,10,0.8); border:1px solid #c46a5a;
+           color:#ffd76a; font-size:15px; text-align:center; text-shadow:0 2px 4px #111;
+           transition:opacity .5s; cursor:pointer; }
+/* the classic in-game cursor (client shipped ArrowCursor.png); the
+   39 40 hotspot is the arrow tip inside the 80×80 transparent canvas */
+body{ cursor:url('content/textures/ArrowCursor.png') 39 40, auto; }
+input{ cursor:text; }
+</style>
+</head>
+<body>
+<div id="view"></div>
+
+<!-- classic 2007 top bar (Play Solo)  labels from the real client/decomp -->
+<div id="menubar">
+  <span onclick="window.RBLXui_instance_open.notify('Toolbox is part of the studio build, not this play client.')">Toolbox</span>
+  <span onclick="window.RBLXui_instance_open.notify('This is the play client.')">Edit Mode</span>
+  <span onclick="window.RBLXui_instance_open.notify('WASD move · Space jump · right-drag camera · wheel zoom · / chat · 1-0 tools')">Help...</span>
+  <span onclick="document.documentElement.requestFullscreen && document.documentElement.requestFullscreen()">Fullscreen</span>
+  <span onclick="window.__leaveGame()">Exit</span>
+</div>
+
+<div id="playerList">
+  <b>Player List</b>
+  <div class="plrow">Player1</div>
+</div>
+<div id="healthHud" role="meter" aria-label="Health" aria-valuemin="0" aria-valuemax="100">
+  <div id="healthBar"><div id="healthFill"></div></div>
+  <div id="healthLabel">Health</div>
+</div>
+
+<div id="chatPanel">
+  <div id="chatLog"></div>
+  <input id="chatInput" placeholder='To chat click here or press "/" key' maxlength="100" spellcheck="false">
+</div>
+
+<div id="notif"></div>
+<div id="messageBox"></div>
+<div id="hintBox"></div>
+<div id="perfWarn" role="alert" title="Click to dismiss"
+     onclick="this.style.display='none'"></div>
+<div id="hotbar"></div>
+<div id="cameraControls">
+  <img src="content/textures/CameraTiltUp.png"   data-cam="tiltUp"   alt="Tilt Up"   title="Tilt Up">
+  <img src="content/textures/CameraZoomIn.png"   data-cam="zoomIn"   alt="Zoom In"   title="Zoom In">
+  <img src="content/textures/CameraTiltDown.png" data-cam="tiltDown" alt="Tilt Down" title="Tilt Down">
+  <img src="content/textures/CameraZoomOut.png"  data-cam="zoomOut"  alt="Zoom Out"  title="Zoom Out">
+</div>
+<button type="button" id="reportBtn" title="Report Abuse" aria-label="Report Abuse"
+        onclick="window.RBLXui_instance_open.notify('Report Abuse is unavailable in this offline port.')">
+  <img src="content/textures/ReportAbuse.PNG" alt="Report">
+</button>
+<div id="infoLine"></div>
+
+<!-- loading -->
+<div id="loadingBar" style="display:none">
+  <div class="box">
+    <b>Joining game…</b>
+    <div class="pb"><div></div></div>
+  </div>
+</div>
+
+<!-- login -->
+<div id="login">
+  <div class="inner">
+    <!-- 2007 site masthead banner (images/banner2.png, scaled to card width) -->
+    <img class="siteBanner" src="images/banner2.png" alt="ROBLOX  the classic gear sandbox">
+    <div class="titlelogo"><span id="titleLogoBounce">ROBLOX</span></div>
+    <div class="subtitle">version 0.3.368 · browser port of the 2007 client · © 2007 ROBLOX Corporation</div>
+    <!-- shown when the browser cannot create a WebGL context -->
+    <div id="webglWarn" role="alert">
+      <b>WebGL is disabled or unavailable</b>
+      This browser cannot create a WebGL context, so the 3D client cannot render.
+      Enable <b>hardware acceleration / WebGL</b> in your browser settings
+      (Chrome: Settings  System  Use hardware acceleration; Firefox:
+      <code>about:config</code>  <code>webgl.disabled</code>; Safari: Develop
+      menu  Experimental Features), then reload this page.
+      <div id="webglWarnDetail" style="margin-top:3px;font-size:11px"></div>
+      <button type="button" id="webglRetry">Reload and check again</button>
+    </div>
+    <div class="placeList" id="placeList">
+      <div class="pl" style="pointer-events:none;color:#778">Loading place list…</div>
+    </div>
+    <input type="file" id="openFile" accept=".rbxl,.rbxlx,.rbxm,.xml">
+    <!-- avatar config: name + body colors (window.RBLXplayer, js/startpage.js) -->
+    <div class="avatarCfg">
+      <div class="cfgRow">
+        <label for="userName">Username:</label>
+        <input id="userName" maxlength="20" spellcheck="false" placeholder="Player1">
+      </div>
+      <div class="partTabsRow">
+        <div class="partTabs" id="bodyPartTabs"></div>
+        <!-- Reset = the shipped character.rbxm rig again (js/startpage.js) -->
+        <button type="button" id="bodyReset" class="tshirtBtn" title="Restore the shipped avatar: Player1, Bright blue torso, Bright yellow head/arms, Br. yellowish green legs.">Reset Avatar</button>
+      </div>
+      <div class="swatches" id="bodySwatches"></div>
+      <div class="cfgHint" id="bodyCfgHint">Pick a body part, then a brick color  applied to your character on join.</div>
+      <!-- T-shirt (decomp ShirtGraphic.TextureId): browse an image, it is
+           drawn on the torso front in-game -->
+      <div class="tshirtRow">
+        <span class="tshirtLabel">T-Shirt:</span>
+        <button type="button" id="tshirtBrowse" class="tshirtBtn">Browse…</button>
+        <button type="button" id="tshirtClear" class="tshirtBtn" style="display:none">Remove</button>
+        <input type="file" id="tshirtFile" accept="image/png,image/jpeg,image/gif,image/webp">
+      </div>
+      <div class="tshirtPreview" id="tshirtPreview" style="display:none">
+        <div class="tshirtTorso" id="tshirtTorso"><img id="tshirtPreviewImg" alt=""></div>
+        <div class="cfgHint">Preview  drawn on the torso front in-game (ShirtGraphic.TextureId).</div>
+      </div>
+    </div>
+    <div class="tip">
+      Or drag a 2007-era <b>.rbxlx/.rbxm</b> XML file here.<br>
+      Controls after joining: WASD + Space · right-drag to turn camera · wheel to zoom · <b>/</b> to chat · 1-9/0 tools.<br>
+      Serve with <code>python3 -m http.server</code> from the <code>web/</code> folder  or just open this file
+      double-clicked (all places, sounds and the character rig are embedded).
+    </div>
+    <!-- the 2007 site's "FREE - Download and Play!" CTA (images/download.png);
+         clicking it notifies  nothing to download, everything is embedded -->
+    <img class="dlCta" src="images/download.png" alt="FREE - Download and Play!" title="FREE - Download and Play!"
+         onclick="window.RBLXui_instance_open && window.RBLXui_instance_open.notify('Nothing to download  you are already playing the 2007 client in your browser. Pick a place above!')">
+  </div>
+</div>
+
+<script src="lib/three.min.js"></script>
+<script src="js/g3d.js"></script>
+<script src="js/brickcolors.js"></script>
+<script src="js/xmlplace.js"></script>
+<script src="js/mesh.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/coreAssets.js"></script>
+<script src="js/fonts.js"></script>
+<script src="js/skyAssets.js"></script>
+<script src="js/headmesh.js"></script>
+<script src="js/world.js"></script>
+<script src="js/character.js"></script>
+<script src="js/physics.js"></script>
+<script src="js/dynamics.js"></script>
+<script src="js/tools.js"></script>
+<script src="js/luaport.js"></script>
+<script src="js/rbxenv.js"></script>
+<script src="js/scriptport.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/safechat.js"></script>
+<script src="js/startpage.js"></script>
+<script src="places/index.js"></script>
+<script src="js/main.js"></script>
+<script src="js/version.js"></script>
+</body>
+</html>

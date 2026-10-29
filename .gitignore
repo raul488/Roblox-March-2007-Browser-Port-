@@ -1,0 +1,14 @@
+# OS / editor junk
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+
+# Logs and temp
+*.log
+/tmp/
+
+# Node (if tooling is added later)
+node_modules/
+npm-debug.log*

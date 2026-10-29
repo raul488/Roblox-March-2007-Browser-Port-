@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROBLOX 0.3.368 — browser port</title>
+<!-- GitHub Pages serves the repo root, but the app lives in web/.
+     Relative redirect so it also works on project pages (/<repo>/). -->
+<meta http-equiv="refresh" content="0; url=web/">
+<link rel="canonical" href="web/">
+<style>
+  html,body{ height:100%; margin:0; background:#18354f; color:#dbe7f2;
+             font-family:'Comic Sans MS','Segoe UI',sans-serif; }
+  body{ display:flex; align-items:center; justify-content:center; text-align:center; }
+  a{ color:#8fc3f2; }
+</style>
+<script>
+  (function () {
+    // Preserve ?query and #hash across the hop.
+    var target = 'web/' + location.search + location.hash;
+    location.replace(target);
+  })();
+</script>
+</head>
+<body>
+  <p>Redirecting to the client…<br>
+     <a href="web/">Click here if nothing happens.</a></p>
+</body>
+</html>
