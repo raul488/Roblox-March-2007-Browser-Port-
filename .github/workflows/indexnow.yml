@@ -1,0 +1,74 @@
+name: IndexNow
+
+# Ping Bing (and therefore DuckDuckGo) after the Pages deploy for this
+# commit is actually live.  IndexNow submissions for URLs that 404 get
+# rejected, so waiting for the build is the part that matters.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: indexnow
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: read
+
+env:
+  # Public IndexNow key. Not a secret: it is served at
+  # /Roblox-March-2007-Browser-Port-/<key>.txt and only proves control of
+  # the host.  Rotate by replacing the .txt file and this value together.
+  INDEXNOW_KEY: fe83a0448a52f3b6a7b4278899fcd123
+  SITE: https://raul488.github.io/Roblox-March-2007-Browser-Port-
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Wait for the Pages build of this commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -u
+          for i in $(seq 1 60); do
+            json=$(curl -sf -H "Authorization: Bearer $GH_TOKEN" \
+                         -H "Accept: application/vnd.github+json" \
+                         "https://api.github.com/repos/$REPO/pages/builds/latest" || true)
+            status=$(printf '%s' "$json" | jq -r '.status // empty')
+            commit=$(printf '%s' "$json" | jq -r '.commit // empty')
+            echo "attempt $i: status=${status:-none} commit=${commit:0:7} want=${SHA:0:7}"
+            if [ "$status" = "built" ] && [ "$commit" = "$SHA" ]; then
+              echo "Pages build for this commit is live"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::warning::Timed out waiting for the Pages build; submitting anyway"
+
+      - name: Submit URLs to IndexNow
+        run: |
+          set -u
+          body=$(jq -n \
+            --arg host "raul488.github.io" \
+            --arg key "$INDEXNOW_KEY" \
+            --arg keyLocation "$SITE/$INDEXNOW_KEY.txt" \
+            --arg u1 "$SITE/" \
+            --arg u2 "$SITE/web/" \
+            --arg u3 "$SITE/web/about.html" \
+            '{host:$host, key:$key, keyLocation:$keyLocation, urlList:[$u1,$u2,$u3]}')
+          code=$(curl -s -o /tmp/resp -w '%{http_code}' \
+            -X POST https://api.indexnow.org/indexnow \
+            -H 'Content-Type: application/json; charset=utf-8' \
+            --data "$body")
+          echo "IndexNow HTTP $code"
+          cat /tmp/resp 2>/dev/null || true
+          case "$code" in
+            200|202) echo "accepted" ;;
+            403) echo "::error::Key rejected (403) - check $SITE/$INDEXNOW_KEY.txt is live"; exit 1 ;;
+            *) echo "::warning::Unexpected response $code" ;;
+          esac
