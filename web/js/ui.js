@@ -157,12 +157,27 @@ class UI {
     for (const t of list){
       const slot=document.createElement('div');
       slot.className='tool';
-      const img=document.createElement('img');
-      img.src=window.RBLXxml.assetMap(t.icon)||'content/textures/GameTool.png';
-      img.title=t.name;
+      if (t.icon){
+        const img=document.createElement('img');
+        img.src=window.RBLXxml.assetMap(t.icon)||'content/textures/GameTool.png';
+        img.title=t.name;
+        slot.appendChild(img);
+      } else {
+        /* BackpackItem without a loadable TextureId: the client falls back
+         * to drawing the item's Name in the slot (FUN_005e8100). */
+        const label=document.createElement('b');
+        label.className='toolName';
+        label.textContent=t.name;
+        /* FUN_005e8100: BinType 1/3 use the grey getter (0.7), BinType 2
+         * uses the yellow getter (1,1,0); every other bin keeps the
+         * widget's default text colour (black). */
+        if (t.binType===1||t.binType===3) label.style.color='#b3b3b3';
+        else if (t.binType===2) label.style.color='#ffff00';
+        slot.appendChild(label);
+      }
       const k=document.createElement('span');
       k.textContent=(n<=9)? String(n) : '0';
-      slot.appendChild(img); slot.appendChild(k);
+      slot.appendChild(k);
       slot.title=t.name;
       const idx=n-1;
       slot.onclick=()=>this.selectTool(idx);

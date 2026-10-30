@@ -239,11 +239,6 @@ async function joinPlace(name, providedText){
     // Player.Backpack by rbxenv.buildGameTree; world.inventory keeps the
     // .rbxl traversal order (HopperBins and generic Tools).
     const binNames={0:'Script',1:'GameTool',2:'Grab',3:'Clone',4:'Hammer',5:'Slingshot',6:'Rocket',7:'Laser'};
-    const customIcons={
-      Ghostwalk:'HalloweenGhost.png', PumpkinBomb:'HalloweenPumpkin.png',
-      Rocket:'HalloweenRocket.png', Skullshot:'HalloweenSkull.png',
-      SoulAsylum:'HalloweenAsylum.png', JetBoots:'RocketBoots.png'
-    };
     const inv=(world.inventory&&world.inventory.length)? world.inventory
               : world.hoppers.concat(world.tools||[]);
     const toolList=inv.map(h=>{
@@ -252,10 +247,11 @@ async function joinPlace(name, providedText){
       const tid=h.props.TextureId;
       const texUrl=(tid && (tid.url||tid.binary)) || null;
       const nm=h.props.Name||(isBin? (binNames[bt]||('Bin '+bt)) : 'Tool');
-      const fallback=(isBin&&customIcons[nm])? ('rbxasset://textures/'+customIcons[nm])
-                    : 'rbxasset://textures/'+(isBin? (binNames[bt]||'GameTool') : 'GameTool')+'.png';
+      /* decomp BackpackItem draw: try the TextureId first; when it does
+       * not load, FUN_005e8100 is called and draws the item's Name as the
+       * slot text.  No generic icon fallback. */
       return { inst:h, kind:h.cls, name:nm, binType:bt,
-               icon: texUrl || fallback };
+               icon: texUrl || null };
     });
     ui.setTools(toolList);
 
