@@ -169,18 +169,20 @@ canvas.viewport{ display:block; width:100%; height:100%; }
 #chatLog .chatLine b{ flex:0 0 auto; min-width:16px; margin-right:4px; font-weight:normal; }
 #chatLog .chatLine span{ flex:0 0 auto; color:#ffffff; }
 #chatInput{ display:block; position:fixed; left:0; right:0; bottom:0; width:100%; height:28px; box-sizing:border-box;
-            background:#b8b8b8; border:0; border-top:1px solid #777; color:#333; padding:4px 8px 4px 42px;
+            background:#b8b8b8; border:0; border-top:1px solid #777; color:#333; padding:4px 8px;
             font-size:13px; outline:none; font-family:inherit; z-index:52; }
 #chatInput:focus{ background:#c8c8c8; }
 /* Super Safe Chat: ChatButton (32x23 Chat.png) + ChatMenuPanel above the
  * chat fold.  Four art states are the engine's FUN_005e8740 suffixes.
- * The bubble sits immediately left of the always-visible chat bar. */
-#safeChatBtn{ position:fixed; left:4px; bottom:2px; z-index:53;
+ * The client anchors the bubble above the backpack strip (a March-2007
+ * capture puts it ~130px above the screen bottom, clear of the 96px
+ * backpack cells that start 28px up). */
+#safeChatBtn{ position:fixed; left:8px; bottom:130px; z-index:53;
               width:32px; height:23px; padding:0; margin:0; border:0; background:transparent;
               cursor:pointer; }
 #safeChatBtn img{ width:32px; height:23px; display:block; -webkit-user-drag:none; }
 #safeChatBtn:disabled{ cursor:default; }
-#safeChatPanel{ position:fixed; left:6px; bottom:34px; min-width:196px; max-width:260px; max-height:60vh;
+#safeChatPanel{ position:fixed; left:6px; bottom:158px; min-width:196px; max-width:260px; max-height:60vh;
                 overflow-y:auto; z-index:51; background:rgba(200,200,200,0.94); border:1px solid #8b8b8b;
                 box-shadow:0 2px 6px rgba(0,0,0,0.35); padding:2px; }
 #safeChatPanel .scTitle{ font-weight:bold; font-size:11px; color:#333; padding:3px 7px; border-bottom:1px solid #a6a6a6;

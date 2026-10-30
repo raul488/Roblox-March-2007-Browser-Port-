@@ -361,7 +361,10 @@ function buildToolModel(binType){
 
 /* ---------------- WorldBuilder ---------------- */
 /* Rotate one authored sky face into the GL cube orientation.  rot is a
- * quarter-turn count CCW: 0 none, 1 CCW, 2 180, 3 CW. */
+ * quarter-turn count CCW: 0 none, 1 CCW, 2 180, 3 CW.  The authored faces
+ * are bottom-up relative to GL's cube convention, so the rotated face is
+ * flipped vertically before upload; without that the clouds land below the
+ * horizon and the whole sky reads upside down. */
 function skyFaceCanvas(img, rot){
   const w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
   if (!w||!h) return img;
@@ -370,6 +373,7 @@ function skyFaceCanvas(img, rot){
   c.width=odd?h:w; c.height=odd?w:h;
   const g=c.getContext('2d');
   g.translate(c.width/2,c.height/2);
+  g.scale(1,-1);                    /* G3D face rows run bottom-up */
   g.rotate(-rot*Math.PI/2);
   g.drawImage(img,-w/2,-h/2,w,h);
   return c;
@@ -719,7 +723,9 @@ class WorldBuilder {
     this.scene.userData=this.scene.userData||{};
     this.scene.userData.lightingBrightness=Math.max(0.01, bright);
     /* the sun light = GL_LIGHT0: diffuse from SpotLightV9 (the era's
-     * "spot light" IS the sun), fixed-function specular ~black */
+     * "spot light" IS the sun); G3D leaves the GL light specular at the
+     * fixed-function default white, so material specular 0.2 gives every
+     * part its plastic sheen. */
     if (this._dir) this.scene.remove(this._dir);
     const spotCol=spot? new THREE.Color(spot.r,spot.g,spot.b) : new THREE.Color(0xffffff);
     this._dir=new THREE.DirectionalLight(spotCol, (up? 0.30 : 0.10));
@@ -1111,6 +1117,10 @@ class WorldBuilder {
          * first stud at 0.5 studs from the edge  the same grid as a 2x2,
          * 4x2 or 1x1 brick.  No ParamA/B phase shift (see the faceKeys
          * comment above): the decomp builders never consume it. */
+        /* One 64px tile covers a 2x2-stud patch, so a face of N studs spans
+         * N/2 tile periods.  Keep the fractional repeat: a 1-stud face
+         * (character arms/legs, 1x1 bricks) must sample the central stud of
+         * the tile, not a whole 2-stud patch squeezed onto one stud. */
         t.repeat.set(du*0.5, dv*0.5);
         t.offset.set(0, 0);
         let m;

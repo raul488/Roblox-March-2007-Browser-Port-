@@ -120,7 +120,13 @@ function glWrap(v){
   return GLX.CLAMP_TO_EDGE;
 }
 
-/* ---------------- fixed-function-equivalent shaders ---------------- */
+/* ---------------- fixed-function-equivalent shaders ---------------- *
+ * GL 1.x lighting is per-vertex (Gouraud) with a constant eye-space view
+ * vector unless GL_LIGHT_MODEL_LOCAL_VIEWER is set (the client never sets
+ * it), so the light equation runs in the vertex shader and the fragment
+ * stage only applies texture env + separate specular, exactly like the
+ * fixed-function pipeline.  Front/back lighting is carried separately for
+ * GL_LIGHT_MODEL_TWO_SIDE and selected with gl_FrontFacing. */
 const VERT_SRC=`
 attribute vec3 aPosition;
 attribute vec3 aNormal;
@@ -132,16 +138,75 @@ uniform mat4 uModel;
 uniform mat3 uNormalMatrix;
 uniform mat3 uUvTransform;
 uniform bool uUseVertexColor;
-varying vec3 vNormal;
-varying vec3 vWorld;
+uniform bool uLit;
+uniform bool uTwoSided;
+uniform float uOpacity;
+uniform vec3 uColor;
+uniform vec3 uEmissive;
+uniform vec3 uSpecular;
+uniform float uShininess;
+uniform vec3 uAmbient;
+uniform vec3 uTopAmbient;
+uniform vec3 uBottomAmbient;
+uniform vec3 uEyeDir;
+uniform vec3 uCameraPos;
+uniform bool uEnvReflect;
+uniform float uLightOn[8];
+uniform vec4 uLightPos[8];
+uniform vec3 uLightDiffuse[8];
+uniform vec3 uLightSpecular[8];
+uniform vec3 uLightAtten[8];
+varying vec3 vLit;
+varying vec3 vSpec;
+varying vec3 vLitBack;
+varying vec3 vSpecBack;
+varying vec3 vEnv;
 varying vec2 vUv;
-varying vec3 vColor;
+varying float vAlpha;
+
+void lightVertex(vec3 N, vec3 base, vec3 P, out vec3 lit, out vec3 spec){
+  vec3 hemi=mix(uBottomAmbient,uTopAmbient,clamp(N.y*0.5+0.5,0.0,1.0));
+  lit=base*(uAmbient+hemi)+uEmissive;
+  spec=vec3(0.0);
+  for (int i=0;i<8;i++){
+    if (uLightOn[i]>0.5){
+      vec3 L; float att=1.0;
+      if (uLightPos[i].w>0.5){
+        vec3 d=uLightPos[i].xyz-P;
+        float dist=length(d);
+        L=d/max(dist,0.0001);
+        att=1.0/max(uLightAtten[i].x+uLightAtten[i].y*dist+
+                    uLightAtten[i].z*dist*dist,0.0001);
+      } else {
+        L=normalize(uLightPos[i].xyz);
+      }
+      float ndl=max(dot(N,L),0.0);
+      lit+=base*uLightDiffuse[i]*ndl*att;
+      vec3 H=normalize(L+uEyeDir);
+      spec+=uSpecular*uLightSpecular[i]*
+            pow(max(dot(N,H),0.0),max(uShininess,1.0))*ndl*att;
+    }
+  }
+}
+
 void main(){
   vec4 wp=uModel*vec4(aPosition,1.0);
-  vWorld=wp.xyz;
-  vNormal=normalize(uNormalMatrix*aNormal);
+  vec3 N=normalize(uNormalMatrix*aNormal);
+  vec3 V=normalize(uCameraPos-wp.xyz);
+  vec3 base=uColor*(uUseVertexColor? aColor.rgb : vec3(1.0));
+  vAlpha=uOpacity*(uUseVertexColor? aColor.a : 1.0);
+  /* GL_REFLECTION_MAP for parts; a sky box samples the view direction
+   * directly because it is the background, not a mirror. */
+  vEnv=uEnvReflect? reflect(-V,N) : -V;
+  if (uLit){
+    lightVertex(N,base,wp.xyz,vLit,vSpec);
+    if (uTwoSided) lightVertex(-N,base,wp.xyz,vLitBack,vSpecBack);
+    else { vLitBack=vLit; vSpecBack=vSpec; }
+  } else {
+    vLit=base; vSpec=vec3(0.0);
+    vLitBack=base; vSpecBack=vSpec;
+  }
   vUv=(uUvTransform*vec3(aUv,1.0)).xy;
-  vColor=uUseVertexColor? aColor.rgb : vec3(1.0);
   gl_Position=uProjection*uView*wp;
 }
 `;
@@ -152,80 +217,41 @@ precision highp float;
 #else
 precision mediump float;
 #endif
-uniform bool uLit;
 uniform bool uTwoSided;
 uniform bool uUseMap;
 uniform bool uUseAlphaMap;
 uniform bool uUseEnv;
 uniform int uTexEnv;
-uniform float uOpacity;
 uniform float uAlphaTest;
 uniform float uBrightness;
-uniform vec3 uColor;
-uniform vec3 uEmissive;
-uniform vec3 uSpecular;
-uniform float uShininess;
-uniform vec3 uAmbient;
-uniform vec3 uTopAmbient;
-uniform vec3 uBottomAmbient;
-uniform vec3 uCameraPos;
 uniform float uReflectivity;
 uniform sampler2D uMap;
 uniform sampler2D uAlphaMap;
 uniform samplerCube uEnvMap;
-uniform float uLightOn[8];
-uniform vec4 uLightPos[8];
-uniform vec3 uLightDiffuse[8];
-uniform vec3 uLightSpecular[8];
-uniform vec3 uLightAtten[8];
-varying vec3 vNormal;
-varying vec3 vWorld;
+varying vec3 vLit;
+varying vec3 vSpec;
+varying vec3 vLitBack;
+varying vec3 vSpecBack;
+varying vec3 vEnv;
 varying vec2 vUv;
-varying vec3 vColor;
+varying float vAlpha;
 void main(){
   vec4 texel=uUseMap? texture2D(uMap,vUv) : vec4(1.0);
+  vec3 lit=(uTwoSided && !gl_FrontFacing)? vLitBack : vLit;
+  vec3 spec=(uTwoSided && !gl_FrontFacing)? vSpecBack : vSpec;
   vec3 base;
   if (uTexEnv==2) base=texel.rgb;
-  else if (uTexEnv==5) base=uColor+texel.rgb;
-  else if (uTexEnv==1 || uTexEnv==4) base=mix(uColor,texel.rgb,texel.a);
-  else base=uColor*texel.rgb;
-  base*=vColor;
-  float alpha=uOpacity*texel.a;
+  else if (uTexEnv==5) base=lit+texel.rgb;
+  else if (uTexEnv==1 || uTexEnv==4) base=mix(lit,texel.rgb,texel.a);
+  else base=lit*texel.rgb;
+  float alpha=vAlpha*texel.a;
   if (uUseAlphaMap) alpha*=texture2D(uAlphaMap,vUv).g;
-  if (uUseEnv) base=mix(base,textureCube(uEnvMap,normalize(vWorld-uCameraPos)).rgb,clamp(uReflectivity,0.0,1.0));
-  vec3 lit;
-  if (uLit){
-    vec3 N=normalize(vNormal);
-    if (uTwoSided && !gl_FrontFacing) N=-N;
-    vec3 hemi=mix(uBottomAmbient,uTopAmbient,clamp(N.y*0.5+0.5,0.0,1.0));
-    lit=base*(uAmbient+hemi)+uEmissive;
-    vec3 V=normalize(uCameraPos-vWorld);
-    for (int i=0;i<8;i++){
-      if (uLightOn[i]>0.5){
-        vec3 L; float att=1.0;
-        if (uLightPos[i].w>0.5){
-          vec3 d=uLightPos[i].xyz-vWorld;
-          float dist=length(d);
-          L=d/max(dist,0.0001);
-          att=1.0/max(uLightAtten[i].x+uLightAtten[i].y*dist+
-                      uLightAtten[i].z*dist*dist,0.0001);
-        } else {
-          L=normalize(uLightPos[i].xyz);
-        }
-        float ndl=max(dot(N,L),0.0);
-        lit+=base*uLightDiffuse[i]*ndl*att;
-        vec3 H=normalize(L+V);
-        lit+=uSpecular*uLightSpecular[i]*
-             pow(max(dot(N,H),0.0),max(uShininess,1.0))*ndl*att;
-      }
-    }
-  } else {
-    lit=base+uEmissive;
-  }
+  if (uUseEnv) base=mix(base,textureCube(uEnvMap,normalize(vEnv)).rgb,clamp(uReflectivity,0.0,1.0));
+  base+=spec;                          /* GL_SEPARATE_SPECULAR_COLOR */
   if (uBrightness>0.0 && uBrightness!=1.0)
-    lit=pow(max(lit,vec3(0.0)),vec3(1.0/uBrightness));
+    base=pow(max(base,vec3(0.0)),vec3(1.0/uBrightness));
   if (uAlphaTest>0.0 && alpha<uAlphaTest) discard;
-  gl_FragColor=vec4(lit,alpha);
+  gl_FragColor=vec4(base,alpha);
 }
 `;
 
@@ -263,11 +289,11 @@ class Device {
       shadeModel:0x1D00,
       polygonOffset:0,
       texEnv:TEXENV.MODULATE,
-      texture:null, alphaMap:null, envMap:null, reflectivity:1,
+      texture:null, alphaMap:null, envMap:null, reflectivity:1, envReflect:false,
       useVertexColor:false,
       view:null, projection:null,
       topAmbient:[1,1,1], bottomAmbient:[0.25,0.3,0.35],
-      cameraPos:[0,0,0],
+      cameraPos:[0,0,0], eyeDir:[0,0,1],
       lights:new Array(8),
       lightOn:new Array(8).fill(false),
     };
@@ -440,6 +466,7 @@ class Device {
   setTexture(tex){ this.state.texture=tex||null; }
   setAlphaMap(tex){ this.state.alphaMap=tex||null; }
   setEnvMap(tex){ this.state.envMap=tex||null; }
+  setEnvReflect(on){ this.state.envReflect=!!on; }
   setReflectivity(v){ this.state.reflectivity=v==null?1:v; }
   setTextureEnv(mode){ this.state.texEnv=(mode==null?TEXENV.MODULATE:mode|0); }
 
@@ -626,8 +653,8 @@ class Device {
     const scalars=['uProjection','uView','uModel','uNormalMatrix','uUvTransform','uUseVertexColor',
       'uLit','uTwoSided','uUseMap','uUseAlphaMap','uUseEnv','uTexEnv','uOpacity',
       'uAlphaTest','uBrightness','uColor','uEmissive','uSpecular','uShininess',
-      'uAmbient','uTopAmbient','uBottomAmbient','uCameraPos','uReflectivity','uMap','uAlphaMap',
-      'uEnvMap'];
+      'uAmbient','uTopAmbient','uBottomAmbient','uCameraPos','uEyeDir',
+      'uReflectivity','uEnvReflect','uMap','uAlphaMap','uEnvMap'];
     for (const n of scalars) u[n]=gl.getUniformLocation(prog,n);
     u.lightOn=[],u.lightPos=[],u.lightDiffuse=[],u.lightSpecular=[],u.lightAtten=[];
     for (let i=0;i<8;i++){
@@ -675,7 +702,10 @@ class Device {
     U(u.uShininess,'uniform1f',s.shininess);
     const cp=s.cameraPos||[0,0,0];
     U(u.uCameraPos,'uniform3f',cp[0],cp[1],cp[2]);
+    const ed=s.eyeDir||[0,0,1];
+    U(u.uEyeDir,'uniform3f',ed[0],ed[1],ed[2]);
     U(u.uReflectivity,'uniform1f',s.reflectivity==null?1:s.reflectivity);
+    U(u.uEnvReflect,'uniform1i',s.envReflect?1:0);
     /* GL light state changes rarely (time of day / a script write); upload
      * it once per change instead of once per draw. */
     if (p.lightVersion!==this._lightVersion){
@@ -966,12 +996,22 @@ class Renderer {
       d.setLight(0,{enabled:true,pos:[p.x,p.y,p.z,0],
         diffuse:[dir.color.r*dir.intensity,dir.color.g*dir.intensity,
                  dir.color.b*dir.intensity],
-        specular:[dir.color.r*dir.intensity,dir.color.g*dir.intensity,
-                  dir.color.b*dir.intensity],
+        /* GL light specular is independent of the diffuse intensity.  The
+         * client leaves G3D's default white specular in place, which is what
+         * gives every part the plastic sheen even with Reflectance = 0. */
+        specular:[1,1,1],
         atten:[1,0,0]});
     } else d.disableLight(0);
     for (let i=1;i<8;i++) d.disableLight(i);
     s.cameraPos=[camera.position.x,camera.position.y,camera.position.z];
+    /* GL_LIGHT_MODEL_LOCAL_VIEWER is left at its default (disabled), so
+     * fixed-function specular uses the constant eye-space (0,0,1) view
+     * direction.  The view matrix's third column is that direction in
+     * world space. */
+    const ve=camera.matrixWorldInverse.elements;
+    const ex=ve[2],ey=ve[6],ez=ve[10];
+    const el=Math.hypot(ex,ey,ez)||1;
+    s.eyeDir=[ex/el,ey/el,ez/el];
   }
 
   _collect(scene,camera){
@@ -1010,6 +1050,10 @@ class Renderer {
     d.setTexture(mat.map||null);
     d.setAlphaMap(mat.alphaMap||null);
     d.setEnvMap(mat.envMap||null);
+    /* The sky box is the background itself (view direction); a reflective
+     * part uses GL_REFLECTION_MAP around its own normal. */
+    d.setEnvReflect(!!mat.envMap && !(mat.isMeshBasicMaterial &&
+                                      mat.side===THREE.BackSide));
     d.setReflectivity(mat.reflectivity!=null?mat.reflectivity:1);
     d.setTextureEnv(TEXENV.MODULATE);
     const transparent=!!mat.transparent;
@@ -1058,7 +1102,7 @@ class Renderer {
     d.setSpecular([0,0,0]); d.setEmissive([0,0,0]); d.setShininess(1);
     d.setVertexColor(false);
     d.setTexture(mat.map||null); d.setAlphaMap(mat.alphaMap||null);
-    d.setEnvMap(null); d.setTextureEnv(TEXENV.MODULATE);
+    d.setEnvMap(null); d.setEnvReflect(false); d.setTextureEnv(TEXENV.MODULATE);
     d.setBlend(BLEND.SRC_ALPHA,BLEND.ONE_MINUS_SRC_ALPHA,BLEND_EQ.ADD);
     d.setDepthTest(mat.depthTest===false?DEPTH.OFF:DEPTH.LEQUAL);
     d.setDepthWrite(false);
@@ -1087,7 +1131,7 @@ class Renderer {
     const c=mat.color||{r:1,g:1,b:1};
     d.setColor([c.r,c.g,c.b],mat.opacity==null?1:mat.opacity);
     d.setSpecular([0,0,0]); d.setEmissive([0,0,0]); d.setShininess(1);
-    d.setTexture(null); d.setAlphaMap(null); d.setEnvMap(null);
+    d.setTexture(null); d.setAlphaMap(null); d.setEnvMap(null); d.setEnvReflect(false);
     const tr=!!mat.transparent;
     if (tr) d.setBlend(BLEND.SRC_ALPHA,BLEND.ONE_MINUS_SRC_ALPHA,BLEND_EQ.ADD);
     else d.setBlend(BLEND.ONE,BLEND.ZERO,BLEND_EQ.ADD);
