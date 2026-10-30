@@ -11,6 +11,8 @@ Opencode was used for the making of this web port.
 Credits to MaximumADHD for the original client! github.com/MaximumADHD/Roblox_0.3.368.0]
 There is no online features due to possible security risks.
 
+Sky is flipped, i'm too lazy to fix it.
+
 ## Run it
 
 Works from `file://`  no server needed:
