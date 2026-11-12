@@ -57,8 +57,16 @@ Remote avatars carry the player's body colors and a small downscaled
 T-shirt. Chat is ASCII-only, capped at 100 characters, rate-limited and
 filtered with a starter profanity list. Usernames are capped at 20
 characters with ASCII letters/numbers, at most one space and one underscore.
-Tools, dynamic parts and place-script interactions across clients are the
-next stage. Hosting without playing (dedicated/headless) is also next.
+
+Host changes replicate to joiners: tool-created and moving parts, grabbed
+bricks, beacon/regen geometry, explosions, and place-script Touched events
+(so remote players trigger jumppads and beacons). Remote characters are
+also carried by the moving assembly they stand on. The host's own tools
+work; joiner-held tools are the remaining tool gap.
+
+**Host (No Player)** creates the same room without a local character, for
+running a dedicated room in a browser tab. It still needs the tab open; a
+native headless server is not implemented.
 
 ## Content and trust
 

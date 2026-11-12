@@ -209,6 +209,7 @@ async function joinPlace(name, providedText, netOpts){
   }
   const netMode = netOpts && (netOpts.mode === 'host' || netOpts.mode === 'client')
     ? netOpts.mode : null;
+  const headlessHost = netMode === 'host' && !!(netOpts && netOpts.headless);
   if (netgame) {
     try { netgame.dispose(); } catch (_) { /* already gone */ }
     netgame = null;
@@ -237,6 +238,14 @@ async function joinPlace(name, providedText, netOpts){
     world.setCamera(camera);
     const stats=world.build(parsed);
     ui.notify('Built '+stats.parts+' parts ('+world.colliders.length+' colliders)...');
+
+    /* A joiner needs the bridge state for applying replicated parts, but
+     * must not run the place's server Scripts. forPlace(..., null) sets up
+     * the DataModel map without a local scripted character. */
+    if (netMode === 'client' && window.RBLXenv && window.RBLXenv.forPlace){
+      window.RBLXenv.forPlace(parsed, world, ui, null);
+      window.RBLXenv.state.netEnabled = false;
+    }
 
     // camera defaults from any Camera instance in file (2007 files carry one)
     const camInst=parsed.instances.find(i=>i.cls==='Camera' && i.props.CFrame);
@@ -274,7 +283,21 @@ async function joinPlace(name, providedText, netOpts){
       ui.chat('Equipped: '+t.name, null, '#ffff00');   // tips = yellow (class 6 switch, decomp FUN_005b8060)
     };
 
-    await spawn(parsed, netMode);
+    if (!headlessHost) {
+      await spawn(parsed, netMode);
+    } else {
+      /* Host without a local character: the local tab is the dedicated
+       * authority. It still runs place scripts and remote simulations. */
+      if (character){ scene.remove(character.group); character=null; }
+      controller=null;
+      tools=null;
+      world.character=null;
+      if (window.RBLXdyn){
+        if (!window.RBLXdyn._ready || window.RBLXdyn.world!==world)
+          window.RBLXdyn.init(world);
+        if (world.refreshControllerFlags) world.refreshControllerFlags();
+      }
+    }
 
     if (netMode !== 'client') {
       sjobs=new window.RBLXscript.PlaceScriptRunner(world, ui, character);
@@ -294,6 +317,10 @@ async function joinPlace(name, providedText, netOpts){
       sjobs=null;
     }
 
+    if (netMode !== 'host' && window.RBLXenv && window.RBLXenv.state){
+      window.RBLXenv.state.netEnabled=false;
+    }
+
     if (netMode && window.RBLXnetgame) {
       netgame=new window.RBLXnetgame.NetGame({
         mode:netMode,
@@ -307,12 +334,20 @@ async function joinPlace(name, providedText, netOpts){
     document.getElementById('loadingBar').style.display='none';
     ui.showInGameHUD();
     if (netMode === 'client' && ui.$hotbar) ui.$hotbar.style.display='none';
+    if (headlessHost){
+      if (ui.$hotbar) ui.$hotbar.style.display='none';
+      const hh=document.getElementById('healthHud');
+      if (hh) hh.style.display='none';
+      ui.notify('Hosting without a local player. Keep this tab open; joiners can play.');
+    }
     /* high-part-count places can stutter on older hardware; the banner
      * carries the actual Workspace part total (threshold in ui.js) */
     ui.warnIfHighPartCount(stats.parts);
     if (window.RBLXsafechat) window.RBLXsafechat.mount();
-    ui.chat('WASD move · Space jump · right-drag camera · wheel zoom · / chat' +
-      (netMode === 'client' ? ' · peer-hosted room' : ' · 1-0 tools'), null, '#ffff00');
+    ui.chat(headlessHost
+      ? 'Hosting without a local player · joiners can play'
+      : 'WASD move · Space jump · right-drag camera · wheel zoom · / chat' +
+        (netMode === 'client' ? ' · peer-hosted room' : ' · 1-0 tools'), null, '#ffff00');
   } catch (err){
     console.error(err);
     ui.notify('Join failed: '+(err.message||err));
@@ -362,7 +397,7 @@ async function spawn(parsed, netMode){
   /* humanoidSound: the Jumping event plays button.wav (one per jump req) */
   character.onJumped=()=>window.Sounds.sound('button.wav', {volume:0.4});
   character.onDeath=()=>{
-    ui.notify('You died.' + (netMode ? ' Leave and rejoin to respawn.' : ''));
+    ui.notify('You died.' + (netMode ? ' Respawning in 5 seconds...' : ''));
     if (!netMode) {
       if (sjobs) sjobs.registerWipeout();
       setTimeout(spawnAll, 5000);      // PlaySolo: Died:connect → wait(5) → LoadCharacter

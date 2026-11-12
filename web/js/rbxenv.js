@@ -63,6 +63,17 @@ const state = {
   signals2:null,             /* {stepped: Signal} for the fake RunService */
   poseRev:0,                 /* bumped when any part pose changes (mouse ray cache) */
   mouseRay:null,             /* last mouse-ray signature {px,py,...,t} */
+
+  /* Replication of world changes (host -> relay -> joiners).  Every parsed
+   * instance gets a stable id; runtime parts get ids above that range. */
+  netMap:new Map(),
+  netNextId:1,
+  netEnabled:true,
+  netDirty:new Set(),
+  netNew:new Set(),
+  netDead:new Set(),
+  netFX:[],
+  netPlayers:new Map(),
 };
 
 /* ------------------------------------------------------------
@@ -698,6 +709,217 @@ function char(){
   return state.character;
 }
 
+/* A fake rig part/humanoid may belong to a remote player.  Local rigs have
+ * __charObj too; fall back to the host character for old fake instances. */
+function charOf(inst){
+  return (inst&&inst.__charObj)||char();
+}
+
+function netIdOf(inst){
+  if (!inst) return 0;
+  if (inst.netId == null) {
+    inst.netId = state.netNextId++;
+    state.netMap.set(inst.netId, inst);
+  } else if (!state.netMap.has(inst.netId)) {
+    state.netMap.set(inst.netId, inst);
+  }
+  return inst.netId;
+}
+
+function netMark(inst){
+  if (!inst || !isPartLike(inst) || state.netEnabled === false || !netReplicablePart(inst)) return;
+  if (state.netNew.has(inst)) return;
+  state.netDirty.add(inst);
+}
+
+/* Only visible Workspace parts cross the wire.  Held tools, Backpacks and
+ * fake character rigs stay local to the host. */
+function netReplicablePart(inst){
+  if (!inst || !state.workspaceInst) return false;
+  for (let p=inst; p; p=p.parent){
+    if (p===state.workspaceInst) return true;
+    if (p.__character || p.__player || p.cls==='Player' ||
+        p.cls==='Tool' || p.cls==='HopperBin' || p.cls==='Backpack') return false;
+  }
+  return false;
+}
+
+function netAssignParsed(parsed){
+  state.netMap = new Map();
+  state.netEnabled = true;
+  state.netDirty = new Set();
+  state.netNew = new Set();
+  state.netDead = new Set();
+  state.netFX = [];
+  state.netPlayers = new Map();
+  state.netNextId = 1;
+  const list = (parsed && parsed.instances) || [];
+  for (const inst of list){
+    if (!inst) continue;
+    if (inst.netId == null) inst.netId = state.netNextId;
+    if (inst.netId >= state.netNextId) state.netNextId = inst.netId + 1;
+    state.netMap.set(inst.netId, inst);
+  }
+}
+
+function round3(n){ return Math.round((Number(n)||0)*1000)/1000; }
+
+/* Serialize one part for the relay.  Only declarative properties; no
+ * Scripts, Sources, URLs or other executable/content fields. */
+function packNetPart(inst){
+  if (!inst || !isPartLike(inst) || !netReplicablePart(inst)) return null;
+  const look = viewLook(inst);
+  if (!look || look.destroyed) return null;
+  const cf = look.cf || inst.props.CFrame || { pos:{x:0,y:0,z:0}, rot:[1,0,0,0,1,0,0,0,1] };
+  const s = look.size || inst.props.size || { x:1, y:1, z:1 };
+  const f = [
+    round3(cf.pos.x), round3(cf.pos.y), round3(cf.pos.z),
+    round3(cf.rot[0]), round3(cf.rot[1]), round3(cf.rot[2]),
+    round3(cf.rot[3]), round3(cf.rot[4]), round3(cf.rot[5]),
+    round3(cf.rot[6]), round3(cf.rot[7]), round3(cf.rot[8])
+  ];
+  const out = {
+    i: netIdOf(inst),
+    c: inst.cls || 'Part',
+    s: [round3(s.x), round3(s.y), round3(s.z)],
+    f: f,
+    a: inst.props.Anchored ? 1 : 0,
+    k: inst.props.CanCollide === false ? 0 : 1,
+    h: Number(inst.props.shape) || 1
+  };
+  const b = Number(inst.props.BrickColor);
+  if (Number.isFinite(b)) out.b = b;
+  else if (look.entry && look.entry.rgb) out.rgb = look.entry.rgb.slice(0,3);
+  const t = Number(inst.props.Transparency);
+  if (t > 0) out.t = Math.min(1, Math.max(0, t));
+  const refl = Number(inst.props.Reflectance);
+  if (refl > 0) out.r = Math.min(1, Math.max(0, refl));
+  const sf = ['RightSurface','TopSurface','BackSurface','LeftSurface','BottomSurface','FrontSurface']
+    .map(k => { const v = Number(inst.props[k]); return Number.isFinite(v) ? v : 0; });
+  if (sf.some(Boolean)) out.sf = sf;
+  return out;
+}
+
+function applyNetPart(inst, p){
+  if (!inst || !p) return;
+  const look = viewLook(inst);
+  if (!look || look.destroyed) return;
+
+  if (p.f && p.f.length >= 12){
+    const nums = p.f.slice(0, 12).map(Number);
+    if (nums.every(Number.isFinite)){
+      placePart(inst, {
+        pos: { x:nums[0], y:nums[1], z:nums[2] },
+        rot: nums.slice(3, 12)
+      });
+    }
+  }
+
+  if (p.b != null || p.rgb){
+    let rgb = null;
+    const bid = Number(p.b);
+    if (p.b != null && Number.isFinite(bid)){
+      const e = window.BrickColorFromId ? window.BrickColorFromId(bid) : null;
+      if (e && e.rgb) rgb = e.rgb;
+      inst.props.BrickColor = Math.max(0, Math.min(4096, bid));
+    } else if (Array.isArray(p.rgb) && p.rgb.length >= 3){
+      rgb = p.rgb.slice(0,3).map(n => Math.max(0, Math.min(255, Number(n)||0)));
+    }
+    if (rgb) recolorPart(inst, [rgb[0]/255, rgb[1]/255, rgb[2]/255]);
+  }
+
+  if (p.t != null && look.obj){
+    const v = Math.min(1, Math.max(0, Number(p.t) || 0));
+    inst.props.Transparency = v;
+    const mats = ownLookMaterials(look);
+    for (const m of mats){
+      if (m){ m.transparent = v > 0.001; m.opacity = 1 - v; m.needsUpdate = true; }
+    }
+    look.obj.visible = v < 0.95;
+    staticDirty(look);
+  }
+
+  if (p.a != null){
+    const v = !!p.a;
+    inst.props.Anchored = v;
+    look.anchored = v;
+    if (window.RBLXdyn && window.RBLXdyn.setAnchored){
+      try { window.RBLXdyn.setAnchored(look, v); } catch(_){}
+    }
+    if (state.world && state.world.refreshControllerFlag)
+      state.world.refreshControllerFlag(inst);
+  }
+
+  if (p.k != null){
+    const v = !!p.k;
+    inst.props.CanCollide = v;
+    look.canCollide = v;
+    const w = state.world;
+    if (w && w.colliders){
+      const i = w.colliders.indexOf(look);
+      if (!v && i >= 0) w.colliders.splice(i, 1);
+      else if (v && i < 0 && look.aabb) w.colliders.push(look);
+    }
+  }
+}
+
+function createNetPart(p){
+  if (!p || !p.i) return null;
+  const cls = (p.c === 'SpawnLocation' || p.c === 'TrussPart') ? p.c : 'Part';
+  const inst = mkInst(cls, 'Part');
+  inst.netId = p.i;
+  state.netMap.set(p.i, inst);
+  const clamp = (v, lo, hi, d) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d;
+  };
+  if (p.s) inst.props.size = {
+    x:clamp(p.s[0], 0.1, 2048, 1),
+    y:clamp(p.s[1], 0.1, 2048, 1),
+    z:clamp(p.s[2], 0.1, 2048, 1)
+  };
+  if (p.f && p.f.length >= 12){
+    const f = p.f.slice(0,12).map(n => clamp(n, -1e7, 1e7, 0));
+    inst.props.CFrame = { pos:{x:f[0], y:f[1], z:f[2]}, rot:f.slice(3,12) };
+  } else {
+    inst.props.CFrame = { pos:{x:0,y:0,z:0}, rot:[1,0,0,0,1,0,0,0,1] };
+  }
+  if (p.b != null) inst.props.BrickColor = clamp(p.b, 0, 4096, 2);
+  inst.props.Transparency = clamp(p.t, 0, 1, 0);
+  inst.props.Anchored = !!p.a;
+  inst.props.CanCollide = p.k !== 0;
+  inst.props.shape = clamp(p.h, 0, 2, 1);
+  if (p.sf){
+    const names = ['RightSurface','TopSurface','BackSurface','LeftSurface','BottomSurface','FrontSurface'];
+    for (let i=0;i<names.length;i++) inst.props[names[i]] = clamp(p.sf[i], 0, 8, 0);
+  }
+  reparent(inst, state.workspaceInst);
+  applyNetPart(inst, p);
+  return inst;
+}
+
+function netDrain(){
+  if (state.netEnabled === false) return { p:[], d:[], f:[] };
+  const out = { p:[], d:[], f:[] };
+  for (const inst of state.netNew){
+    const p = packNetPart(inst);
+    if (p){ p.n = 1; out.p.push(p); }
+  }
+  for (const inst of state.netDirty){
+    if (state.netNew.has(inst)) continue;
+    const p = packNetPart(inst);
+    if (p){ p.n = 0; out.p.push(p); }
+  }
+  for (const inst of state.netDead){
+    if (inst && inst.netId != null) out.d.push(inst.netId);
+  }
+  out.f = state.netFX.splice(0);
+  state.netNew.clear();
+  state.netDirty.clear();
+  state.netDead.clear();
+  return out;
+}
+
 const InstMT={
   __index(args){
     const w=args[0], key=String(args[1]);
@@ -706,10 +928,10 @@ const InstMT={
     /* pseudo-fields on the fake insts come first */
     if (inst.__fakeHumanoid){
       switch (key){
-        case 'Health': return [char()? char().health : undefined];
-        case 'MaxHealth': return [char()? char().maxHealth : undefined];
-        case 'WalkSpeed': return [char()? char().walkSpeed : 16];
-        case 'JumpPower': return [char()? char().jumpVelocity : 50];
+        case 'Health': { const c=charOf(inst); return [c? c.health : undefined]; }
+        case 'MaxHealth': { const c=charOf(inst); return [c? c.maxHealth : undefined]; }
+        case 'WalkSpeed': { const c=charOf(inst); return [c? c.walkSpeed : 16]; }
+        case 'JumpPower': { const c=charOf(inst); return [c? c.jumpVelocity : 50]; }
         case 'Parent': return [wrap(inst.parent)];
         case 'Died': case 'Running': case 'Jumping': case 'FreeFalling':
         case 'Climbing': case 'GettingUp': case 'FallingDown':
@@ -717,7 +939,7 @@ const InstMT={
       }
     }
     if (inst.__fakeTorso){
-      const ch=char(), nm=inst.__charPart||inst.props.Name||'Torso';
+      const ch=charOf(inst), nm=inst.__charPart||inst.props.Name||'Torso';
       switch (key){
         case 'Velocity': {
           const v=ch? ch.velocity : null;
@@ -858,7 +1080,11 @@ const InstMT={
       case 'stop': case 'Stop': case 'pause': case 'Pause':
         return [mkM(()=>{ soundStop(inst); return []; })];
       case 'TakeDamage':
-        return [mkM(a=>{ if (char()&&cls==='Humanoid') char().takeDamage(a[1]||0); return []; })];
+        return [mkM(a=>{
+          const c=(inst.__fakeHumanoid&&inst.__charObj)||char();
+          if (c && cls==='Humanoid') c.takeDamage(a[1]||0);
+          return [];
+        })];
       case 'Value':
         /* NumberValue/IntValue/BoolValue/StringValue/ObjectValue etc. */
         if (/Value$/.test(cls)) return [propToLua(inst.props.Value)];
@@ -1006,7 +1232,7 @@ const InstMT={
       if (ev.indexOf(key)>=0) return [wrapSignal(touchedSignal(inst, key), key)];
     }
     if (inst.__player){
-      if (key==='Character') return [state.modelInst? wrap(state.modelInst) : undefined];
+      if (key==='Character') return [inst.__charModel ? wrap(inst.__charModel) : (state.modelInst? wrap(state.modelInst) : undefined)];
       if (key==='Backpack'){
         const bp=childByName(inst,'Backpack') ||
                  (inst===state.playerInst? state.backpackInst : null);
@@ -1088,7 +1314,7 @@ const InstMT={
       })];
     }
     if (cls==='Players'&&(inst===state.playersInst||inst===state.playerInst)){
-      if (key==='Character') return [state.modelInst? wrap(state.modelInst) : undefined];
+      if (key==='Character') return [inst.__charModel ? wrap(inst.__charModel) : (state.modelInst? wrap(state.modelInst) : undefined)];
       if (key==='ChildAdded'||key==='ChildRemoved'||key==='Changed')
         return [wrapSignal(touchedSignal(inst, key), key)];
       if (key==='LocalPlayer'&&inst===state.playersInst) return [wrap(state.playerInst)];
@@ -1136,19 +1362,19 @@ const InstMT={
     const inst=w.__rinst;
     if (inst.__fakeHumanoid){
       if (key==='Health'){
-        if (char()){
-          const c=char();
+        const c=charOf(inst);
+        if (c){
           c.health=v;
           if (v<=0 && c.alive) c.die();
         }
         return;
       }
-      if (key==='MaxHealth'){ if (char()) char().maxHealth=v; return; }
-      if (key==='WalkSpeed'){ if (char()) char().walkSpeed=v; return; }
-      if (key==='JumpPower'){ if (char()) char().jumpVelocity=v; return; }
+      if (key==='MaxHealth'){ const c=charOf(inst); if (c) c.maxHealth=v; return; }
+      if (key==='WalkSpeed'){ const c=charOf(inst); if (c) c.walkSpeed=v; return; }
+      if (key==='JumpPower'){ const c=charOf(inst); if (c) c.jumpVelocity=v; return; }
     }
     if (inst.__fakeTorso){
-      const c=char(), nm=inst.__charPart||inst.props.Name||'Torso';
+      const c=charOf(inst), nm=inst.__charPart||inst.props.Name||'Torso';
       if (key==='Velocity'){
         if (c && v && v.pv){
           c.velocity.set(v.pv[0], v.pv[1], v.pv[2]);   /* the literal Torso.Velocity= port */
@@ -1470,6 +1696,7 @@ const InstMT={
           }
           if (look) staticDirty(look);
         }
+        netMark(inst);
         return;
       }
       case 'Anchored': {
@@ -1482,6 +1709,7 @@ const InstMT={
             state.world.refreshControllerFlag(inst);
           if (!v) moverRegister(inst, look.velocity||{x:0,y:0,z:0});
         }
+        netMark(inst);
         return;
       }
       case 'CanCollide': {
@@ -1493,6 +1721,7 @@ const InstMT={
           if (!v && i>=0) state.world.colliders.splice(i,1);
           else if (v && i<0 && look.aabb) state.world.colliders.push(look);
         }
+        netMark(inst);
         return;
       }
       case 'PlayOnRemove': {
@@ -1737,7 +1966,14 @@ function syncShirts(){
  * Parts first (engine ordering), then scripts/messages/explosions. */
 function attachToWorld(inst){
   const list=walkAll(inst);
-  for (const it of list) buildOrRestore(it);
+  for (const it of list){
+    buildOrRestore(it);
+    if (isPartLike(it) && state.netEnabled !== false && netReplicablePart(it)){
+      netIdOf(it);
+      state.netNew.add(it);
+      state.netDirty.delete(it);
+    }
+  }
   /* authored joints only become live once both referenced parts exist */
   for (const it of list) if (JOINT_CLASSES.has(it.cls)) syncJointInst(it, true);
   for (const it of list){
@@ -1754,6 +1990,12 @@ function detachFromWorld(inst, destroyed){
   for (const it of walkAll(inst)){
     if (isPartLike(it)){
       if (destroyed&&it.props.PlayOnRemove===true) playOnRemoveSound(it);
+      if (netReplicablePart(it) && state.netEnabled !== false){
+        netIdOf(it);
+        state.netDead.add(it);
+        state.netNew.delete(it);
+        state.netDirty.delete(it);
+      }
       const look=w&&w.partLook? w.partLook.get(it) : null;
       if (look&&!look.destroyed&&w&&w.destroyPart) w.destroyPart(it);
       if (look) state.movers.delete(look);
@@ -1880,6 +2122,11 @@ function stepExplosions(dt){
       w.explodeAt(e.pos, e.radius, e.pressure, e.inst,
         (part,dist)=>fireExplosionHit(e.inst, part, dist));
     }
+    state.netFX.push({
+      t: 'e',
+      p: [round3(e.pos.x), round3(e.pos.y), round3(e.pos.z)],
+      r: round3(e.radius)
+    });
     /* visual: the tools Explosion is the engine's RBX::View::Explosion render */
     if (e.radius>0&&window.RBLXtools&&window.RBLXtools.Explosion&&w&&w.scene&&window.THREE){
       try {
@@ -1984,6 +2231,7 @@ function placePart(inst, cf){
   }
   state.poseRev++;
   staticDirty(look);
+  netMark(inst);
   return look;
 }
 
@@ -2111,6 +2359,7 @@ function recolorPart(inst, cl){
     if (e) look.entry.name=e.name;
   }
   staticDirty(look);
+  netMark(inst);
 }
 
 function matchBrickColorId(rgb){
@@ -2317,10 +2566,10 @@ function wrapSignal(sig){
  * per-frame contacts (fires Touched) + movers + Stepped
  * ============================================================== */
 /* runner _touching(): (p.x+2.2>min.x&&p.x-2.2<max.x && p.z+0.75&&… && p.y+2.2&&(p.y-3.2)<max.y) */
-function torsoOverlaps(aabb, pad){
-  const ch=char();
-  if (!ch||!ch.group||!ch.group.position) return false;
-  const p=ch.group.position;
+function torsoOverlaps(aabb, pad, ch){
+  const c=ch||char();
+  if (!c||!c.group||!c.group.position) return false;
+  const p=c.group.position;
   const P=pad||{x:2.2, z:0.75, yt:2.2, yb:3.2};
   return (p.x+P.x>aabb.min.x && p.x-P.x<aabb.max.x &&
           p.z+P.z>aabb.min.z && p.z-P.z<aabb.max.z &&
@@ -2384,6 +2633,22 @@ function tickContacts(dt){
         fireTouched(inst, wrap(state.torsoInst));
       }
     }
+    /* remote characters hit by the same mover (rockets/pellets/etc.) */
+    if (look.aabb && state.netPlayers.size){
+      if (!look.__tc_net) look.__tc_net=new Map();
+      const a=look.aabb;
+      for (const [id,rec] of state.netPlayers){
+        const ch=rec.character;
+        if (!ch||!ch.alive||!ch.group) { look.__tc_net.delete(id); continue; }
+        const p=ch.group.position;
+        const inside=(p.x+0.9>a.min.x&&p.x-0.9<a.max.x&&
+                      p.z+0.9>a.min.z&&p.z-0.9<a.max.z&&
+                      p.y+1.9>a.min.y&&p.y-1.9<a.max.y);
+        const was=look.__tc_net.get(id)===true;
+        look.__tc_net.set(id, inside);
+        if (inside&&!was) fireTouched(inst, wrap(rec.torso));
+      }
+    }
   }
   /* 2) static parts whose scripts connected Touched  stepping on them */
   for (const inst of state.watchSet){
@@ -2391,6 +2656,16 @@ function tickContacts(dt){
     if (!look||look.destroyed||!look.aabb) continue;
     if (state.movers.has(look)) continue;          /* movers already probe in §1 */
     if (enterFlag(look, '__touchIn')) fireTouched(inst, wrap(state.torsoInst));
+    if (state.netPlayers.size){
+      if (!look.__netIn) look.__netIn=new Map();
+      for (const [id,rec] of state.netPlayers){
+        const ch=rec.character;
+        const inside=ch&&ch.alive? torsoOverlaps(look.aabb, null, ch) : false;
+        const was=look.__netIn.get(id)===true;
+        look.__netIn.set(id, inside);
+        if (inside&&!was) fireTouched(inst, wrap(rec.torso));
+      }
+    }
   }
 }
 
@@ -2735,6 +3010,7 @@ function setCharacter(ch){
   state.diedFired=false;
   state.characterMovers=new Set();
   state.animateInst=null;
+  if (state.playerInst) state.playerInst.__charModel=null;
   /* drop the previous fake rig from the workspace tree on respawn */
   if (state.modelInst&&state.modelInst.parent){
     /* kill the old Animate script and any tool scripts still under it so
@@ -2750,14 +3026,16 @@ function setCharacter(ch){
   if (!wsl) return;
   const model=mkInst('Model',(window.RBLXplayer&&window.RBLXplayer.name)||'Player1');
   model.__character=true;
+  model.__charObj=ch;
   model.parent=wsl; wsl.children.push(model);
-  const hum=mkInst('Humanoid','Humanoid'); hum.__fakeHumanoid=true;
+  const hum=mkInst('Humanoid','Humanoid'); hum.__fakeHumanoid=true; hum.__charObj=ch;
   hum.parent=model; model.children.push(hum);
   const parts={};
   for (const nm of ['Torso','Head','Left Arm','Right Arm','Left Leg','Right Leg']){
     const p=mkInst('Part',nm);
     p.__fakeTorso=true;
     p.__charPart=nm;
+    p.__charObj=ch;
     p.parent=model; model.children.push(p);
     parts[nm]=p;
   }
@@ -2781,6 +3059,7 @@ function setCharacter(ch){
   state.modelInst=model;
   state.torsoInst=torso;
   state.humanInst=hum;
+  if (state.playerInst) state.playerInst.__charModel=model;
 
   /* Launch the actual shipped Animate script.  It is the source of truth
    * for servo targets (running/idle amplitudes, jump/fall/climb poses, the
@@ -2811,9 +3090,91 @@ function setCharacter(ch){
   applyTeamVisuals();
 }
 
+/* Remote players get a fake DataModel tree too.  Place scripts use the
+ * classic hit.Parent:findFirstChild("Humanoid") pattern; the fake tree's
+ * property accessors map to the host-simulated Character, so a jumppad's
+ * Torso.Velocity write or a beacon's Humanoid.Health write lands on the
+ * real remote body.  Host only; joiners never run place scripts. */
+function addNetPlayer(id, name, ch){
+  if (!id || !ch || !state.playersInst || !state.workspaceInst) return null;
+  let rec = state.netPlayers.get(id);
+  if (rec){
+    rec.character = ch;
+    rec.name = String(name||rec.name);
+    rec.player.props.Name = rec.name;
+    rec.model.props.Name = rec.name;
+    rec.player.__charObj = ch;
+    rec.player.__charModel = rec.model;
+    rec.model.__charObj = ch;
+    rec.humanoid.__charObj = ch;
+    for (const nm in rec.parts) rec.parts[nm].__charObj = ch;
+    return rec;
+  }
+  const label = String(name||'Player');
+  const player = mkInst('Player', label);
+  player.__player = true;
+  player.__playerNet = true;
+  player.__charObj = ch;
+  player.parent = state.playersInst;
+  state.playersInst.children.push(player);
+  ensureBackpackForPlayer(player);
+
+  const model = mkInst('Model', label);
+  model.__character = true;
+  model.__playerNet = true;
+  model.__charObj = ch;
+  model.parent = state.workspaceInst;
+  state.workspaceInst.children.push(model);
+
+  const hum = mkInst('Humanoid', 'Humanoid');
+  hum.__fakeHumanoid = true;
+  hum.__charObj = ch;
+  hum.parent = model;
+  model.children.push(hum);
+
+  const parts = {};
+  for (const nm of ['Torso','Head','Left Arm','Right Arm','Left Leg','Right Leg']){
+    const p = mkInst('Part', nm);
+    p.__fakeTorso = true;
+    p.__charPart = nm;
+    p.__charObj = ch;
+    p.parent = model;
+    model.children.push(p);
+    parts[nm] = p;
+  }
+  const torso = parts['Torso'];
+  model.props.PrimaryPart = torso;
+  for (const nm of ['Left Leg','Right Leg','Left Arm','Right Arm','Torso','Head'])
+    hum.children.push(parts[nm]);
+
+  player.__charModel = model;
+  rec = { id, name:label, player, model, humanoid:hum, torso, parts, character:ch };
+  state.netPlayers.set(id, rec);
+  try {
+    fireEvent(state.playersInst, 'ChildAdded', [wrap(player)]);
+    fireEvent(state.playersInst, 'PlayerAdded', [wrap(player)]);
+  } catch(_){}
+  return rec;
+}
+
+function removeNetPlayer(id){
+  const rec = state.netPlayers.get(id);
+  if (!rec) return;
+  state.netPlayers.delete(id);
+  const rm = (parent, child) => {
+    if (!parent || !child) return;
+    const i = parent.children.indexOf(child);
+    if (i >= 0) parent.children.splice(i, 1);
+    child.parent = null;
+  };
+  try { fireEvent(state.playersInst, 'PlayerRemoved', [wrap(rec.player)]); } catch(_){}
+  rm(state.workspaceInst, rec.model);
+  rm(state.playersInst, rec.player);
+  rec.player.__charModel = null;
+}
+
 /* Humanoid events are the low-level feed the shipped Animate script
- * listens for.  character.js calls this on pose transitions. */
-function fireHumanoidEvent(name, args){
+ * listens for.  character.js calls this on pose transitions. */function fireHumanoidEvent(name, args){
   if (!state.humanInst) return 0;
   return fireEvent(state.humanInst, name, args||[]);
 }
@@ -3165,6 +3526,7 @@ function forPlace(parsed, world, ui, character){
   mouseState.leftDown=false;
   mouseState.leftPressed=false;
   mouseState.icon='ArrowCursor.png';
+  netAssignParsed(parsed);
   buildGameTree(parsed);
   setCharacter(character);
   syncJointsUnder(state.workspaceInst);
@@ -3205,6 +3567,8 @@ window.RBLXenv={
   wrap, unwrap, viewLook, rebuild:attachToWorld,
   placePart, mkInst, walkAll, childByName,
   findService, fireEvent, invokeCallback, fireHumanoidEvent,
+  netDrain, applyNetPart, createNetPart, netIdOf,
+  addNetPlayer, removeNetPlayer,
   updateMouse, mouseDown, mouseUp, keyDown, keyUp, getMouse:()=>MOUSE, mouseHasHandlers,
   getMouseInfo:()=>({target:mouseState.target, hit:mouseState.hit, icon:mouseState.icon,
                      x:mouseState.x, y:mouseState.y, leftDown:mouseState.leftDown}),

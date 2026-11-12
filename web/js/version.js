@@ -8,7 +8,7 @@
  * ============================================================ */
 (function(){
   "use strict";
-  var n=71, label='chat-names';
+  var n=72, label='world-sync';
   window.PORT_BUILD={ n:n, label:label };
   if (typeof document==='undefined' || typeof document.body==='undefined' || !document.body) return;
   var d=document.createElement('div');

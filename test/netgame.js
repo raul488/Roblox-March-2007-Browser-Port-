@@ -44,6 +44,13 @@ class FakeCharacter {
   _drawTag() {}
   applyBodyColors(colors) { this.bodyColors = colors; }
   applyTshirt(url) { this.tshirt = url; }
+  respawn() {
+    this.alive = true;
+    this.health = 100;
+    this.velocity.set(0, 0, 0);
+    this.onGround = false;
+    if (this.nameTag) this.nameTag.visible = true;
+  }
 }
 
 class FakeHumanoid {
@@ -209,6 +216,74 @@ async function main() {
   client.chat('hi');
   assert.ok(clientSession.sent.some(m => m.k === 'c' && m.text === 'hi' && !('from' in m)));
 
+  /* Host-authoritative respawn: host local player, remote joiner, and the
+   * joiner's own local body all come back after the 5 s timer. */
+  hostChar.alive = false;
+  hostChar.health = 0;
+  host.step(1 / 60, { moveDir: new V3(), jump: false, climbAxis: 0 }, hostChar, null);
+  assert.ok(host.localRespawnAt > 0, 'host did not schedule a local respawn');
+  host.localRespawnAt = performance.now() - 1;
+  host.step(1 / 60, { moveDir: new V3(), jump: false, climbAxis: 0 }, hostChar, null);
+  assert.strictEqual(hostChar.alive, true, 'host local respawn failed');
+  assert.strictEqual(hostChar.health, 100);
+
+  remote.character.alive = false;
+  remote.character.health = 0;
+  host.step(1 / 60, { moveDir: new V3(), jump: false, climbAxis: 0 }, hostChar, null);
+  assert.ok(remote.respawnAt > 0, 'host did not schedule a remote respawn');
+  remote.respawnAt = performance.now() - 1;
+  host.step(1 / 60, { moveDir: new V3(), jump: false, climbAxis: 0 }, hostChar, null);
+  assert.strictEqual(remote.character.alive, true, 'host remote respawn failed');
+  assert.strictEqual(remote.character.health, 100);
+
+  /* A remote standing on a moving assembly is carried by its support. */
+  const supportLook = { destroyed:false, cf:{ pos:{x:0,y:0,z:0}, rot:[1,0,0,0,1,0,0,0,1] } };
+  remote.character.groundLook = supportLook;
+  host.step(1 / 60, { moveDir: new V3(), jump: false, climbAxis: 0 }, hostChar, null);
+  const carryStart = remote.character.group.position.x;
+  supportLook.cf.pos.x = 5;
+  host.step(1 / 60, { moveDir: new V3(), jump: false, climbAxis: 0 }, hostChar, null);
+  assert.ok(remote.character.group.position.x > carryStart, 'remote did not ride the moving support');
+
+  clientChar.alive = false;
+  clientChar.health = 0;
+  client.selfSynced = true;
+  clientSession.onMessage({
+    from: 'host',
+    d: {
+      k: 's', t: 3, p: [
+        { i: 'host', p: [5, 3, 0], r: 0.5, v: [0, 0, 0], g: 1, h: 100, a: 1 },
+        { i: 'join', p: [0, 7, 0], r: 0, v: [0, 0, 0], g: 1, h: 100, a: 1 }
+      ]
+    }
+  });
+  assert.strictEqual(clientChar.alive, true, 'client did not apply its own respawn');
+  assert.strictEqual(clientChar.health, 100);
+  assert.strictEqual(clientChar.group.position.x, 0);
+
+  clientSession.onMessage({
+    from: 'host',
+    d: {
+      k: 's', t: 4, p: [
+        { i: 'host', p: [5, 3, 0], r: 0.5, v: [0, 0, 0], g: 1, h: 0, a: 0 },
+        { i: 'join', p: [0, 7, 0], r: 0, v: [0, 0, 0], g: 1, h: 100, a: 1 }
+      ]
+    }
+  });
+  client.step(1 / 30, { moveDir: new V3(), jump: false, climbAxis: 0 }, clientChar, null);
+  assert.strictEqual(hostAvatar.character.alive, false, 'client remote death failed');
+  clientSession.onMessage({
+    from: 'host',
+    d: {
+      k: 's', t: 5, p: [
+        { i: 'host', p: [0, 7, 0], r: 0, v: [0, 0, 0], g: 1, h: 100, a: 1 },
+        { i: 'join', p: [0, 7, 0], r: 0, v: [0, 0, 0], g: 1, h: 100, a: 1 }
+      ]
+    }
+  });
+  assert.strictEqual(hostAvatar.character.alive, true, 'client remote respawn failed');
+  assert.strictEqual(hostAvatar.character.group.position.x, 0);
+
   /* Roster removal drops the remote avatar. */
   host.onRoster([{ id: 'host', name: 'Alice', host: true }]);
   await tick();
@@ -216,6 +291,56 @@ async function main() {
 
   host.dispose();
   client.dispose();
+
+  /* A host with no local character still simulates and snapshots joiners. */
+  const noPlayerSession = makeSession('host', players);
+  const noPlayerHost = new NetGame({
+    mode: 'host', session: noPlayerSession, scene, world, ui: makeUi(),
+    character: null, controller: null, parsed: null
+  });
+  noPlayerHost.start();
+  await tick();
+  assert.ok(noPlayerHost.remotes.has('join'), 'no-player host did not create remote');
+  noPlayerHost.sendSnapshot();
+  const noPlayerSnap = noPlayerSession.sent.filter(m => m.k === 's').pop();
+  assert.ok(noPlayerSnap && noPlayerSnap.p.length === 1, 'no-player snapshot included a local body');
+  assert.strictEqual(noPlayerSnap.p[0].i, 'join');
+  noPlayerHost.dispose();
+
+  /* Part/FX replication plumbing: host drains rbxenv and sends, client
+   * creates/updates/removes and spawns the explosion visual. */
+  const partMsg = { k:'parts', p:[
+    { i:101, n:1, c:'Part', s:[1,1,1], f:[0,0,0,1,0,0,0,1,0,0,0,1], a:0, k:1, h:1 },
+    { i:102, n:1, c:'Part', s:[2,2,2], f:[5,0,0,1,0,0,0,1,0,0,0,1], a:0, k:1, h:1 }
+  ], d:[7], f:[{ t:'e', p:[1,2,3], r:4 }] };
+  const sent = [];
+  window.RBLXenv = {
+    state: { netMap: new Map(), world: {} },
+    netDrain: () => ({ p: partMsg.p, d: partMsg.d, f: partMsg.f }),
+    createNetPart(p) { sent.push('new:' + p.i); this.state.netMap.set(p.i, { id:p.i }); },
+    applyNetPart(inst, p) { sent.push('upd:' + p.i); },
+    detachFromWorld(inst) { sent.push('del:' + inst.id); }
+  };
+  const partsHost = new NetGame({
+    mode: 'host', session: makeSession('host', players), scene, world, ui: makeUi(),
+    character: new FakeCharacter(scene, world, 'Alice'), controller: new FakeHumanoid(hostChar, world), parsed: null
+  });
+  partsHost.sendParts();
+  const out = partsHost.session.sent.filter(m => m.k === 'parts').pop();
+  assert.ok(out && out.p.length === 2, 'host did not send part batch');
+  assert.deepStrictEqual(out.d, [7]);
+  assert.strictEqual(out.f[0].t, 'e');
+  partsHost.dispose();
+
+  const client2 = new NetGame({
+    mode: 'client', session: makeSession('client', players), scene, world, ui: makeUi(),
+    character: new FakeCharacter(scene, world, 'Bob'), controller: new FakeHumanoid(clientChar, world), parsed: null
+  });
+  window.RBLXenv.state.netMap.set(7, { id:7 });
+  client2.applyParts(partMsg);
+  assert.deepStrictEqual(sent, ['new:101', 'new:102', 'del:7']);
+  client2.dispose();
+
   console.log('ALL NETGAME TESTS PASSED');
 }
 

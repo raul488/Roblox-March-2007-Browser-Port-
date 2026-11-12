@@ -21,7 +21,8 @@
     session: null,
     mode: null,
     connectTimer: null,
-    leaving: false
+    leaving: false,
+    headless: false
   };
 
   function $(id) { return document.getElementById(id); }
@@ -97,6 +98,7 @@
     state.place = String(place || '');
     state.onSolo = typeof onSolo === 'function' ? onSolo : null;
     state.browsing = false;
+    state.headless = false;
     stopPoll();
 
     setText(els.modePlace, state.place);
@@ -235,7 +237,7 @@
   }
 
   /* ------------------------- room session ------------------------- */
-  function connect(mode, roomId) {
+  function connect(mode, roomId, opts) {
     if (state.ws || state.session) return;
     var base = relayBase();
     if (!base) {
@@ -243,6 +245,7 @@
       return;
     }
     state.mode = mode;
+    state.headless = mode === 'host' && !!(opts && opts.headless);
     state.leaving = false;
 
     var params = new URLSearchParams();
@@ -368,6 +371,7 @@
         try {
           var started = window.RBLXstartNetworkGame({
             mode: state.mode === 'host' ? 'host' : 'client',
+            headless: state.mode === 'host' && state.headless,
             session: state.session
           });
           if (started && typeof started.catch === 'function') {
@@ -475,6 +479,7 @@
     state.session = null;
     state.mode = null;
     state.browsing = false;
+    state.headless = false;
     state.place = null;
     state.onSolo = null;
     hideAll();
@@ -485,7 +490,7 @@
   function init() {
     var ids = [
       'modePicker', 'modePlace', 'modeSolo', 'modePlay', 'modeCancel', 'modeHint',
-      'serverBrowser', 'sbPlace', 'sbHost', 'sbRefresh', 'sbStatus', 'sbList', 'sbBack',
+      'serverBrowser', 'sbPlace', 'sbHost', 'sbHostNoPlayer', 'sbRefresh', 'sbStatus', 'sbList', 'sbBack',
       'roomLobby', 'lobbyPlace', 'lobbyRoom', 'lobbyHost', 'lobbyPlayers',
       'lobbyStatus', 'lobbyLeave'
     ];
@@ -501,6 +506,9 @@
     els.sbBack.onclick = backToMode;
     els.sbRefresh.onclick = refreshRooms;
     els.sbHost.onclick = function () { connect('host'); };
+    if (els.sbHostNoPlayer) {
+      els.sbHostNoPlayer.onclick = function () { connect('host', null, { headless: true }); };
+    }
     els.lobbyLeave.onclick = leaveRoom;
 
     window.addEventListener('pagehide', function () {

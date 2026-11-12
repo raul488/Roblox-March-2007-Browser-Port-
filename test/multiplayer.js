@@ -30,7 +30,7 @@ class El {
 
 const ids = [
   'modePicker', 'modePlace', 'modeSolo', 'modePlay', 'modeCancel', 'modeHint',
-  'serverBrowser', 'sbPlace', 'sbHost', 'sbRefresh', 'sbStatus', 'sbList', 'sbBack',
+  'serverBrowser', 'sbPlace', 'sbHost', 'sbHostNoPlayer', 'sbRefresh', 'sbStatus', 'sbList', 'sbBack',
   'roomLobby', 'lobbyPlace', 'lobbyRoom', 'lobbyHost', 'lobbyPlayers',
   'lobbyStatus', 'lobbyLeave'
 ];
@@ -298,6 +298,25 @@ async function main() {
   started.session.onMessage = msg => { joinMessage = msg; };
   clientWs.message({ t: 'state', d: { k: 's', p: [] } });
   assert.strictEqual(joinMessage.from, 'host1');
+  started.session.close();
+
+  /* Host (No Player) asks the game hook to enter without a local body. */
+  started = null;
+  mp.chooseMode('Crossroads', () => {});
+  E('modePlay').onclick();
+  await tick();
+  await tick();
+  E('sbHostNoPlayer').onclick();
+  const noPlayerWs = FakeWebSocket.instances[FakeWebSocket.instances.length - 1];
+  noPlayerWs.open();
+  noPlayerWs.message({
+    t: 'welcome', v: 1, room: 'dedicated1234567890abcd', place: 'Crossroads',
+    self: 'host1', host: 'host1', max: 16,
+    players: [{ id: 'host1', name: 'Tester', host: true }]
+  });
+  assert.ok(started, 'no-player host hook was not called');
+  assert.strictEqual(started.mode, 'host');
+  assert.strictEqual(started.headless, true);
   started.session.close();
 
   global.setInterval = realSetInterval;

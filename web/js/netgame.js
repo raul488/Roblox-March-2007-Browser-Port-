@@ -17,6 +17,7 @@
   var SNAPSHOT_HZ = 20;
   var INPUT_HZ = 30;
   var INPUT_TIMEOUT = 500;
+  var RESPAWN_MS = 5000;
   var AVATAR_SHIRT_LIMIT = 48 * 1024;
 
   function filterChat(text) {
@@ -133,6 +134,9 @@
       this.snapAcc = 0;
       this.tick = 0;
       this.selfSynced = false;
+      this.localRespawnAt = 0;
+      this.partAcc = 0;
+      this.fx = [];
       this.chatAt = 0;
       this.chatLog = new Map();
       this.remoteChatTimes = [];
@@ -262,6 +266,43 @@
       }
     }
 
+    resetController(c) {
+      if (!c) return;
+      c.onGround = false;
+      c.jumping = false;
+      c.jumpLatch = false;
+      c.jumpTime = 0;
+      c.climbing = false;
+      c.climbVol = null;
+      c.climbN = { x: 0, z: 0 };
+      c.groundLook = null;
+    }
+
+    respawnLocal() {
+      if (!this.character) return;
+      var at = this.spawnPos();
+      this.character.group.position.copy(at);
+      this.character.group.rotation.y = 0;
+      this.character.velocity.set(0, 0, 0);
+      this.character.respawn();
+      this.character.onGround = false;
+      this.resetController(this.controller);
+      this.localRespawnAt = 0;
+      this.sendSnapshot();
+    }
+
+    respawnRemote(rec) {
+      if (!rec || !rec.character) return;
+      var at = this.spawnPos();
+      rec.character.group.position.copy(at);
+      rec.character.group.rotation.y = 0;
+      rec.character.velocity.set(0, 0, 0);
+      rec.character.respawn();
+      rec.character.onGround = false;
+      this.resetController(rec.humanoid);
+      rec.respawnAt = 0;
+    }
+
     /* Create/remove remote avatars from the relay roster. The host also
      * owns a Humanoid per remote so it can simulate their input. */
     async syncRoster(players) {
@@ -274,6 +315,7 @@
 
         var rec = this.remotes.get(p.id);
         if (!rec) {
+          if (this.mode !== 'host') continue;   /* clients create from snapshots */
           rec = {
             id: p.id,
             name: p.name || 'Player',
@@ -288,7 +330,9 @@
             hasTarget: false,
             avatar: null,
             input: { moveDir: new THREE.Vector3(), jump: false, climbAxis: 0 },
-            lastInput: 0
+            lastInput: 0,
+            carryLook: null,
+            carryPos: null
           };
           this.remotes.set(p.id, rec);
           rec.avatar = this.profiles.get(p.id) || null;
@@ -300,6 +344,9 @@
           if (rec.character) {
             rec.character.playerName = p.name;
             if (rec.character._drawTag) rec.character._drawTag();
+          }
+          if (this.mode === 'host' && rec.character && window.RBLXenv && window.RBLXenv.addNetPlayer) {
+            window.RBLXenv.addNetPlayer(rec.id, rec.name, rec.character);
           }
         }
       }
@@ -329,6 +376,9 @@
         rec.humanoid.onGround = false;
       }
       if (rec.avatar) this.applyAvatar(rec);
+      if (this.mode === 'host' && window.RBLXenv && window.RBLXenv.addNetPlayer) {
+        window.RBLXenv.addNetPlayer(rec.id, rec.name, ch);
+      }
     }
 
     disposeCharacter(ch) {
@@ -349,6 +399,9 @@
       this.profiles.delete(id);
       this.avatarSeen.delete(id);
       this.chatLog.delete(id);
+      if (this.mode === 'host' && window.RBLXenv && window.RBLXenv.removeNetPlayer) {
+        window.RBLXenv.removeNetPlayer(id);
+      }
       if (rec.character) this.disposeCharacter(rec.character);
     }
 
@@ -375,6 +428,7 @@
 
       if (d.k === 's') this.applySnapshot(d);
       else if (d.k === 'c') this.clientChat(d);
+      else if (d.k === 'parts') this.applyParts(d);
       else if (d.k === 'who') {
         this.avatarReady.then(() => {
           if (this.active) this.sendAvatar();
@@ -444,12 +498,45 @@
 
       if (this.mode === 'host') {
         var now = performance.now();
+        if (this.character && !this.character.alive) {
+          if (!this.localRespawnAt) this.localRespawnAt = now + RESPAWN_MS;
+          else if (now >= this.localRespawnAt) this.respawnLocal();
+        } else {
+          this.localRespawnAt = 0;
+        }
         for (var rec of this.remotes.values()) {
           if (!rec.character || !rec.humanoid) continue;
+          if (!rec.character.alive) {
+            if (!rec.respawnAt) rec.respawnAt = now + RESPAWN_MS;
+            else if (now >= rec.respawnAt) this.respawnRemote(rec);
+          } else {
+            rec.respawnAt = 0;
+          }
           if (now - rec.lastInput > INPUT_TIMEOUT) {
             rec.input.moveDir.set(0, 0, 0);
             rec.input.jump = false;
             rec.input.climbAxis = 0;
+          }
+          /* Remote characters are not part of the host's single-character
+           * dynamics carry.  Compare the support they stood on last tick
+           * with its current pose and carry them with a moving assembly. */
+          var support = rec.character.groundLook;
+          if (support && !support.destroyed && support.cf){
+            if (rec.carryLook === support && rec.carryPos){
+              var dx = support.cf.pos.x - rec.carryPos.x;
+              var dy = support.cf.pos.y - rec.carryPos.y;
+              var dz = support.cf.pos.z - rec.carryPos.z;
+              if (Math.hypot(dx, dy, dz) < 12){
+                rec.character.group.position.x += dx;
+                rec.character.group.position.y += dy;
+                rec.character.group.position.z += dz;
+              }
+            }
+            rec.carryLook = support;
+            rec.carryPos = { x:support.cf.pos.x, y:support.cf.pos.y, z:support.cf.pos.z };
+          } else {
+            rec.carryLook = null;
+            rec.carryPos = null;
           }
           rec.humanoid.step(dt, rec.input);
           rec.character.step(dt, rec.input);
@@ -458,6 +545,11 @@
         if (this.snapAcc >= 1 / SNAPSHOT_HZ) {
           this.snapAcc = 0;
           this.sendSnapshot();
+        }
+        this.partAcc += dt;
+        if (this.partAcc >= 1 / 10) {
+          this.partAcc = 0;
+          this.sendParts();
         }
         return;
       }
@@ -485,6 +577,100 @@
         ch.alive = r.alive;
         if (ch.nameTag) ch.nameTag.visible = r.alive;
         ch.step(dt, ZERO_INPUT);
+      }
+      this.stepFx(dt);
+    }
+
+    sendParts() {
+      var E = window.RBLXenv;
+      if (!E || !E.netDrain) return;
+      var data = E.netDrain();
+      var parts = Array.isArray(data.p) ? data.p : [];
+      var dead = Array.isArray(data.d) ? data.d : [];
+      var fx = Array.isArray(data.f) ? data.f : [];
+      if (!parts.length && !dead.length && !fx.length) return;
+
+      if (!parts.length){
+        this.session.send({ k: 'parts', p: [], d: dead, f: fx });
+        return;
+      }
+      var chunk = 40;
+      for (var i = 0; i < parts.length; i += chunk){
+        this.session.send({
+          k: 'parts',
+          p: parts.slice(i, i + chunk),
+          d: i === 0 ? dead : [],
+          f: i === 0 ? fx : []
+        });
+      }
+    }
+
+    applyParts(d) {
+      var E = window.RBLXenv;
+      if (!E || !E.state || !E.state.world) return;
+      var list = Array.isArray(d.p) ? d.p : [];
+      if (list.length > 256) list = list.slice(0, 256);
+      for (var i = 0; i < list.length; i++){
+        var p = list[i];
+        if (!p || !p.i) continue;
+        var inst = E.state.netMap.get(p.i);
+        if (p.n && !inst){
+          E.createNetPart(p);
+        } else if (inst){
+          E.applyNetPart(inst, p);
+        }
+      }
+      var dead = Array.isArray(d.d) ? d.d : [];
+      if (dead.length > 512) dead = dead.slice(0, 512);
+      for (var id of dead){
+        var gone = E.state.netMap.get(id);
+        if (!gone) continue;
+        E.detachFromWorld(gone, true);
+        if (gone.parent){
+          var at = gone.parent.children.indexOf(gone);
+          if (at >= 0) gone.parent.children.splice(at, 1);
+          gone.parent = null;
+        }
+        E.state.netMap.delete(id);
+      }
+      var fx = Array.isArray(d.f) ? d.f : [];
+      if (fx.length > 16) fx = fx.slice(0, 16);
+      for (var j = 0; j < fx.length; j++) this.spawnFx(fx[j]);
+    }
+
+    spawnFx(f) {
+      if (!f || f.t !== 'e' || !Array.isArray(f.p) || f.p.length < 3) return;
+      if (this.fx.length >= 32) return;
+      var radius = Math.max(0.5, Math.min(64, Number(f.r) || 4));
+      try {
+        var geo = new THREE.SphereGeometry(1, 15, 15);
+        var mat = new THREE.MeshBasicMaterial({
+          color: 0xffb000, transparent: true, opacity: 0.9, depthWrite: false
+        });
+        var mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(Number(f.p[0]) || 0, Number(f.p[1]) || 0, Number(f.p[2]) || 0);
+        mesh.scale.setScalar(0.1);
+        this.scene.add(mesh);
+        this.fx.push({ mesh: mesh, mat: mat, geo: geo, age: 0, radius: radius });
+      } catch (_) { /* no THREE in a test */ }
+      if (window.Sounds && window.Sounds.sound) {
+        try { window.Sounds.sound('collide.wav', { volume: 0.8 }); } catch (_){}
+      }
+    }
+
+    stepFx(dt) {
+      for (var i = this.fx.length - 1; i >= 0; i--){
+        var e = this.fx[i];
+        e.age += dt;
+        var k = Math.min(1, e.age / 0.5);
+        e.mesh.scale.setScalar(e.radius * (0.2 + 0.8 * k));
+        e.mat.opacity = 0.9 * (1 - k);
+        if (k >= 1){
+          if (e.mesh.parent) e.mesh.parent.remove(e.mesh);
+          if (e.geo) e.geo.dispose();
+          if (e.mat) e.mat.dispose();
+          this.fx.splice(i, 1);
+        }
       }
     }
 
@@ -535,13 +721,24 @@
 
         if (e.i === this.selfId) {
           if (!this.character) continue;
+          var wasAlive = this.character.alive;
           var p = this.character.group.position;
           var err = Math.hypot(p.x - x, p.y - y, p.z - z);
+          if (e.a === 0) {
+            this.character.alive = false;
+            if (this.character.nameTag) this.character.nameTag.visible = false;
+          } else if (!wasAlive) {
+            this.character.respawn();
+            this.character.group.position.set(x, y, z);
+            this.character.velocity.set(0, 0, 0);
+            this.character.onGround = false;
+            this.resetController(this.controller);
+            this.selfSynced = true;
+          }
           if (!this.selfSynced || err > 2.5 || Math.abs(p.y - y) > 3) p.set(x, y, z);
           this.selfSynced = true;
           var h = Number(e.h);
           if (isFinite(h)) this.character.health = Math.max(0, Math.min(200, h));
-          if (e.a === 0) this.character.alive = false;
           continue;
         }
 
@@ -562,7 +759,9 @@
             hasTarget: false,
             avatar: null,
             input: { moveDir: new THREE.Vector3(), jump: false, climbAxis: 0 },
-            lastInput: 0
+            lastInput: 0,
+            carryLook: null,
+            carryPos: null
           };
           this.remotes.set(e.i, rec);
           rec.avatar = this.profiles.get(e.i) || null;
@@ -578,7 +777,16 @@
         }
         rec.onGround = !!e.g;
         rec.health = Math.max(0, Math.min(200, Number(e.h) || 0));
+        var wasDead = !rec.alive;
         rec.alive = e.a !== 0;
+        if (wasDead && rec.alive) {
+          rec.hasTarget = true;
+          if (rec.character) {
+            rec.character.respawn();
+            rec.character.group.position.copy(rec.target);
+            rec.character.group.rotation.y = yaw;
+          }
+        }
         if (!rec.hasTarget) {
           rec.hasTarget = true;
           if (rec.character) {
