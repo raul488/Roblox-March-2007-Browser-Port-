@@ -142,6 +142,7 @@
       this.selectedTool = null;
       this.toolAcc = 0;
       this.localTool = null;
+      this.selfColorId = 0;
       this.chatAt = 0;
       this.chatLog = new Map();
       this.remoteChatTimes = [];
@@ -194,6 +195,22 @@
     setMouse(mouse, camera) {
       this.mouse = mouse || null;
       this.cameraView = camera || this.cameraView;
+    }
+
+    teamCSS(id) {
+      id = id | 0;
+      if (!id) return '#ffffff';
+      var e = window.BrickColorFromId ? window.BrickColorFromId(id) : null;
+      return e && e.rgb
+        ? 'rgb(' + e.rgb[0] + ',' + e.rgb[1] + ',' + e.rgb[2] + ')'
+        : '#ffffff';
+    }
+
+    selfTeamColor() {
+      if (this.mode === 'client') return this.selfColorId || 0;
+      var E = window.RBLXenv;
+      var id = E && E.state ? E.state.playerTeamColor : null;
+      return id != null ? (id | 0) : 0;
     }
 
     equipTool(t) {
@@ -273,11 +290,18 @@
 
     updatePlayersUI() {
       if (!this.ui || !this.ui.setPlayers) return;
-      this.ui.setPlayers(this.players.map(p => ({
-        name: p.name,
-        self: p.id === this.selfId,
-        host: p.id === this.hostId
-      })));
+      this.ui.setPlayers(this.players.map(p => {
+        var rc = this.remotes.get(p.id);
+        var color = p.id === this.selfId
+          ? this.selfTeamColor()
+          : (rc && rc.teamColor) || 0;
+        return {
+          name: p.name,
+          self: p.id === this.selfId,
+          host: p.id === this.hostId,
+          color: color ? this.teamCSS(color) : null
+        };
+      }));
     }
 
     onRoster(list) {
@@ -431,7 +455,8 @@
             lastInput: 0,
             carryLook: null,
             carryPos: null,
-            toolBin: 0
+            toolBin: 0,
+            teamColor: 0
           };
           this.remotes.set(p.id, rec);
           rec.avatar = this.profiles.get(p.id) || null;
@@ -477,7 +502,8 @@
       if (rec.avatar) this.applyAvatar(rec);
       if (rec.toolBin && ch.setToolVisual) ch.setToolVisual(rec.toolBin);
       if (this.mode === 'host' && window.RBLXenv && window.RBLXenv.addNetPlayer) {
-        window.RBLXenv.addNetPlayer(rec.id, rec.name, ch);
+        var np = window.RBLXenv.addNetPlayer(rec.id, rec.name, ch);
+        if (np && np.teamColor != null) rec.teamColor = np.teamColor;
       }
     }
 
@@ -764,8 +790,23 @@
     }
 
     spawnFx(f) {
-      if (!f || f.t !== 'e' || !Array.isArray(f.p) || f.p.length < 3) return;
+      if (!f) return;
       if (this.fx.length >= 32) return;
+      if (f.t === 'l'){
+        if (!Array.isArray(f.a) || !Array.isArray(f.b) || f.a.length < 3 || f.b.length < 3) return;
+        try {
+          var lg = new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(Number(f.a[0]), Number(f.a[1]), Number(f.a[2])),
+            new THREE.Vector3(Number(f.b[0]), Number(f.b[1]), Number(f.b[2]))
+          ]);
+          var lm = new THREE.LineBasicMaterial({ color:0xff3010, transparent:true, opacity:0.85 });
+          var line = new THREE.Line(lg, lm);
+          this.scene.add(line);
+          this.fx.push({ mesh:line, mat:lm, geo:lg, age:0, life:0.12 });
+        } catch (_) {}
+        return;
+      }
+      if (f.t !== 'e' || !Array.isArray(f.p) || f.p.length < 3) return;
       var radius = Math.max(0.5, Math.min(64, Number(f.r) || 4));
       try {
         var geo = new THREE.SphereGeometry(1, 15, 15);
@@ -776,7 +817,7 @@
         mesh.position.set(Number(f.p[0]) || 0, Number(f.p[1]) || 0, Number(f.p[2]) || 0);
         mesh.scale.setScalar(0.1);
         this.scene.add(mesh);
-        this.fx.push({ mesh: mesh, mat: mat, geo: geo, age: 0, radius: radius });
+        this.fx.push({ mesh: mesh, mat: mat, geo: geo, age: 0, radius: radius, life: 0.5 });
       } catch (_) { /* no THREE in a test */ }
       if (window.Sounds && window.Sounds.sound) {
         try { window.Sounds.sound('collide.wav', { volume: 0.8 }); } catch (_){}
@@ -787,8 +828,8 @@
       for (var i = this.fx.length - 1; i >= 0; i--){
         var e = this.fx[i];
         e.age += dt;
-        var k = Math.min(1, e.age / 0.5);
-        e.mesh.scale.setScalar(e.radius * (0.2 + 0.8 * k));
+        var k = Math.min(1, e.age / e.life);
+        if (e.radius) e.mesh.scale.setScalar(e.radius * (0.2 + 0.8 * k));
         e.mat.opacity = 0.9 * (1 - k);
         if (k >= 1){
           if (e.mesh.parent) e.mesh.parent.remove(e.mesh);
@@ -811,7 +852,7 @@
       });
     }
 
-    playerState(id, ch, toolBin) {
+    playerState(id, ch, toolBin, teamColor) {
       var p = ch.group.position;
       var v = ch.velocity;
       return {
@@ -822,16 +863,17 @@
         g: ch.onGround ? 1 : 0,
         h: Math.max(0, Math.min(200, Number(ch.health) || 0)),
         a: ch.alive ? 1 : 0,
-        t: Math.max(0, Math.min(7, Number(toolBin) || 0))
+        t: Math.max(0, Math.min(7, Number(toolBin) || 0)),
+        c: Math.max(0, Math.min(4096, Number(teamColor) || 0))
       };
     }
 
     sendSnapshot() {
       if (!this.session || !this.session.send) return;
       var list = [];
-      if (this.character) list.push(this.playerState(this.selfId, this.character, this.localTool));
+      if (this.character) list.push(this.playerState(this.selfId, this.character, this.localTool, this.selfTeamColor()));
       for (var rec of this.remotes.values()) {
-        if (rec.character) list.push(this.playerState(rec.id, rec.character, rec.toolBin));
+        if (rec.character) list.push(this.playerState(rec.id, rec.character, rec.toolBin, rec.teamColor));
       }
       this.session.send({ k: 's', t: ++this.tick, p: list });
     }
@@ -865,6 +907,12 @@
           this.selfSynced = true;
           var h = Number(e.h);
           if (isFinite(h)) this.character.health = Math.max(0, Math.min(200, h));
+          var sc = Math.max(0, Math.min(4096, Number(e.c) || 0));
+          if (sc !== this.selfColorId) {
+            this.selfColorId = sc;
+            if (this.character.setTagColor) this.character.setTagColor(this.teamCSS(sc));
+            this.updatePlayersUI();
+          }
           continue;
         }
 
@@ -888,7 +936,8 @@
             lastInput: 0,
             carryLook: null,
             carryPos: null,
-            toolBin: 0
+            toolBin: 0,
+            teamColor: 0
           };
           this.remotes.set(e.i, rec);
           rec.avatar = this.profiles.get(e.i) || null;
@@ -910,6 +959,12 @@
         if (tb !== rec.toolBin){
           rec.toolBin = tb;
           if (rec.character && rec.character.setToolVisual) rec.character.setToolVisual(tb || null);
+        }
+        var tc = Math.max(0, Math.min(4096, Number(e.c) || 0));
+        if (tc !== rec.teamColor){
+          rec.teamColor = tc;
+          if (rec.character && rec.character.setTagColor) rec.character.setTagColor(this.teamCSS(tc));
+          this.updatePlayersUI();
         }
         if (wasDead && rec.alive) {
           rec.hasTarget = true;

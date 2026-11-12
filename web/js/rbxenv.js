@@ -1239,10 +1239,20 @@ const InstMT={
         return [bp? wrap(bp) : undefined];
       }
       if (key==='PlayerGui') return [wrap(childByName(inst,'PlayerGui')||inst)];
-      if (key==='Team') return [state.playerTeam? wrap(state.playerTeam) : undefined];
-      if (key==='TeamColor')
+      if (key==='Team'){
+        if (inst.__playerNet)
+          return [inst.__teamColor!=null
+            ? wrap(teamInstances().find(t=>teamColorId(t)===inst.__teamColor)||null)
+            : undefined];
+        return [state.playerTeam? wrap(state.playerTeam) : undefined];
+      }
+      if (key==='TeamColor'){
+        if (inst.__playerNet)
+          return [BrickColor(inst.__teamColor!=null? inst.__teamColor : 194)];
         return [BrickColor(state.playerTeamColor!=null? state.playerTeamColor : 194)];
-      if (key==='Neutral') return [!state.playerTeam];
+      }
+      if (key==='Neutral')
+        return [inst.__playerNet? inst.__teamColor==null : !state.playerTeam];
     }
     if (cls==='Model'||inst.__character){
       if (key==='PrimaryPart'){
@@ -2805,6 +2815,39 @@ function teamColorCSS(id, neutral){
   const e=window.BrickColorFromId? window.BrickColorFromId(id|0):null;
   return e? 'rgb('+e.rgb[0]+','+e.rgb[1]+','+e.rgb[2]+')' : '#ffffff';
 }
+
+/* Assign a team to a host-simulated remote player: fewest members wins,
+ * the same tie-break the engine applies on join.  The result also colours
+ * the avatar's overhead tag; the relay snapshot carries the id. */
+function assignNetPlayerTeam(id){
+  const rec=state.netPlayers.get(id);
+  if (!rec) return null;
+  const teams=teamInstances();
+  if (!teams.length){
+    rec.teamColor=null;
+    rec.player.__teamColor=null;
+    return null;
+  }
+  const counts=new Map();
+  for (const t of teams) counts.set(t,0);
+  if (state.playerTeam) counts.set(state.playerTeam,(counts.get(state.playerTeam)||0)+1);
+  for (const [rid,other] of state.netPlayers){
+    if (rid===id||other.teamColor==null) continue;
+    const t=teams.find(t=>teamColorId(t)===other.teamColor);
+    if (t) counts.set(t,(counts.get(t)||0)+1);
+  }
+  let pick=null, best=Infinity;
+  for (const t of teams){
+    if (t.props.AutoAssignable===false) continue;
+    const n=counts.get(t)||0;
+    if (n<best){ best=n; pick=t; }
+  }
+  rec.teamColor=pick? teamColorId(pick) : null;
+  rec.player.__teamColor=rec.teamColor;
+  if (rec.character&&rec.character.setTagColor)
+    rec.character.setTagColor(teamColorCSS(rec.teamColor, rec.teamColor==null));
+  return rec.teamColor;
+}
 function applyTeamVisuals(){
   const id=state.playerTeamColor;
   const css=teamColorCSS(id, id==null);
@@ -3108,6 +3151,7 @@ function addNetPlayer(id, name, ch){
     rec.model.__charObj = ch;
     rec.humanoid.__charObj = ch;
     for (const nm in rec.parts) rec.parts[nm].__charObj = ch;
+    assignNetPlayerTeam(id);
     return rec;
   }
   const label = String(name||'Player');
@@ -3150,6 +3194,7 @@ function addNetPlayer(id, name, ch){
   player.__charModel = model;
   rec = { id, name:label, player, model, humanoid:hum, torso, parts, character:ch };
   state.netPlayers.set(id, rec);
+  assignNetPlayerTeam(id);
   try {
     fireEvent(state.playersInst, 'ChildAdded', [wrap(player)]);
     fireEvent(state.playersInst, 'PlayerAdded', [wrap(player)]);

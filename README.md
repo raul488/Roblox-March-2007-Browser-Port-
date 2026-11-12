@@ -70,7 +70,9 @@ host-only.
 running a dedicated room in a browser tab. It still needs the tab open; a
 native headless server is not implemented. Duplicate display names get a
 numeric suffix (`Alice`, `Alice2`); the chat filter uses the expanded
-starter word list.
+starter word list. When the place ships a Teams service, players are
+assigned to the fewest-member team and the overhead tag/player list take
+that team colour, replicated by the snapshot.
 
 ## Content and trust
 

@@ -45,6 +45,7 @@ class FakeCharacter {
   applyBodyColors(colors) { this.bodyColors = colors; }
   applyTshirt(url) { this.tshirt = url; }
   setToolVisual(binType) { this.toolVisual = binType; }
+  setTagColor(css) { this.tagColor = css; }
   respawn() {
     this.alive = true;
     this.health = 100;
@@ -75,7 +76,10 @@ global.window = global;
 global.THREE = { Vector3: V3 };
 global.RBLXcharacter = { Character: FakeCharacter };
 global.RBLXphysics = { Humanoid: FakeHumanoid };
-global.BrickColorFromId = id => ({ id: id });
+global.BrickColorFromId = id => ({
+  id: id,
+  rgb: id === 21 ? [245, 205, 47] : id === 22 ? [200, 90, 10] : [255, 255, 255]
+});
 global.location = { reload() {} };
 vm.runInThisContext(fs.readFileSync(path.join(__dirname, '../web/js/chatfilter.js'), 'utf8'));
 vm.runInThisContext(fs.readFileSync(path.join(__dirname, '../web/js/netgame.js'), 'utf8'));
@@ -281,14 +285,19 @@ async function main() {
     from: 'host',
     d: {
       k: 's', t: 3, p: [
-        { i: 'host', p: [5, 3, 0], r: 0.5, v: [0, 0, 0], g: 1, h: 100, a: 1 },
-        { i: 'join', p: [0, 7, 0], r: 0, v: [0, 0, 0], g: 1, h: 100, a: 1 }
+        { i: 'host', p: [5, 3, 0], r: 0.5, v: [0, 0, 0], g: 1, h: 100, a: 1, c: 22 },
+        { i: 'join', p: [0, 7, 0], r: 0, v: [0, 0, 0], g: 1, h: 100, a: 1, c: 21 }
       ]
     }
   });
   assert.strictEqual(clientChar.alive, true, 'client did not apply its own respawn');
   assert.strictEqual(clientChar.health, 100);
   assert.strictEqual(clientChar.group.position.x, 0);
+  assert.strictEqual(client.selfColorId, 21);
+  assert.strictEqual(clientChar.tagColor, 'rgb(245,205,47)');
+  assert.strictEqual(hostAvatar.character.tagColor, 'rgb(200,90,10)');
+  assert.ok(client.ui.players.some(p => p.name === 'Alice' && p.color === 'rgb(200,90,10)'),
+    'player list did not take the team colour');
 
   clientSession.onMessage({
     from: 'host',

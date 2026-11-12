@@ -10,6 +10,8 @@ const path=require('path');
 
 global.window={};
 global.performance={ now:()=>0 };
+window.BrickColorFromId=id=>({id,
+  rgb:id===21?[245,205,47]:id===23?[0,0,255]:[255,255,255]});
 vm.runInThisContext(fs.readFileSync(path.join(__dirname,'../web/js/luaport.js'),'utf8'));
 vm.runInThisContext(fs.readFileSync(path.join(__dirname,'../web/js/rbxenv.js'),'utf8'));
 const L=window.RBLXlua, E=window.RBLXenv;
@@ -160,10 +162,27 @@ const netChar={
   group:{position:{x:0,y:3,z:0},rotation:{y:0}},
   partWorldCF:()=>({pos:{x:0,y:3,z:0},rot:[1,0,0,0,1,0,0,0,1]}),
   movePartTo(){}, setPartColor(){}, setPartTransparency(){},
+  setTagColor(css){ this.tagColor=css; },
   takeDamage(d){ this.health=Math.max(0,this.health-d); }
 };
+/* Two auto-assignable teams: remotes balance across them, and their
+ * Player.TeamColor is readable by host-side place scripts. */
+const teamsSvc=E.state.gameInst.children.find(c=>c.cls==='Teams');
+const teamA=E.mkInst('Team','Red'), teamB=E.mkInst('Team','Blue');
+teamA.props.TeamColor=21; teamA.props.AutoAssignable=true;
+teamB.props.TeamColor=23; teamB.props.AutoAssignable=true;
+teamA.parent=teamsSvc; teamsSvc.children.push(teamA);
+teamB.parent=teamsSvc; teamsSvc.children.push(teamB);
 const rec=E.addNetPlayer('net1','Remote',netChar);
 assert.ok(rec, 'addNetPlayer failed');
+assert.strictEqual(rec.teamColor,21,'first remote did not take the first team');
+assert.strictEqual(rec.player.__teamColor,21);
+assert.strictEqual(netChar.tagColor,'rgb(245,205,47)');
+const netChar2=Object.assign({},netChar);
+const rec2=E.addNetPlayer('net2','Remote2',netChar2);
+assert.strictEqual(rec2.teamColor,23,'second remote did not balance to the other team');
+assert.strictEqual(netChar2.tagColor,'rgb(0,0,255)');
+E.removeNetPlayer('net2');
 const remoteEnv=L.makeEnv({p:E.wrap(rec.player)});
 assert.deepStrictEqual(
   run(remoteEnv,'return p.Character:FindFirstChild("Humanoid").Health'),

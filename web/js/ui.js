@@ -217,6 +217,7 @@ class UI {
       row.textContent=String(p.name||'Player');
       if (p.self) row.style.fontWeight='bold';
       if (p.host) row.title='Host';
+      if (p.color) row.style.color=p.color;
       box.appendChild(row);
     }
   }

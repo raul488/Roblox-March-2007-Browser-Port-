@@ -654,6 +654,13 @@ class ToolManager {
           const line=new THREE.Line(geo, new THREE.LineBasicMaterial({ color:0xff3010, transparent:true, opacity:0.85 }));
           this.scene.add(line);
           const f=setTimeout(()=>{ this.scene.remove(line); geo.dispose(); }, 120);
+          if (window.RBLXenv && window.RBLXenv.state && window.RBLXenv.state.netEnabled){
+            window.RBLXenv.state.netFX.push({
+              t:'l',
+              a:[character.group.position.x, character.group.position.y+1, character.group.position.z],
+              b:[end.x, end.y, end.z]
+            });
+          }
           window.Sounds.sound('flashbulb.wav', {volume:0.45});
           this.coolDown=1.1;
         }
@@ -670,7 +677,14 @@ class ToolManager {
             const s=p.props.size;
             clone.props.CFrame={ pos:{ x:p.props.CFrame.pos.x, y:p.props.CFrame.pos.y+ (s? s.y/2+1:1), z:p.props.CFrame.pos.z },
                                  rot:p.props.CFrame.rot.slice() };
-            w.buildPart(clone);
+            const E=window.RBLXenv;
+            if (E && E.mkInst && E.reparent && E.state && E.state.netEnabled){
+              const inst=E.mkInst('Part','Clone');
+              inst.props=Object.assign({}, p.props, { CFrame:clone.props.CFrame });
+              E.reparent(inst, E.state.workspaceInst);
+            } else {
+              w.buildPart(clone);
+            }
             window.Sounds.sound('snap.wav', {volume:0.5});
           }
           this.coolDown=0.4;
@@ -681,7 +695,18 @@ class ToolManager {
         if (mouse.leftPressed){
           const pick=w.pickPartRaw(ray);
           if (pick){
-            w.destroyPart(pick.look.part);
+            const E=window.RBLXenv;
+            if (E && E.detachFromWorld && E.state && E.state.netEnabled){
+              const inst=pick.look.part;
+              E.detachFromWorld(inst, true);
+              if (inst.parent){
+                const at=inst.parent.children.indexOf(inst);
+                if (at>=0) inst.parent.children.splice(at,1);
+                inst.parent=null;
+              }
+            } else {
+              w.destroyPart(pick.look.part);
+            }
             window.Sounds.sound('snap.wav', {volume:0.65});
             window.Sounds.sound('collide.wav', {volume:0.35});
           }
