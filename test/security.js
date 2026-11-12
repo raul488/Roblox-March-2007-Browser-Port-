@@ -34,6 +34,7 @@ assert.ok(scriptSrc && !/'unsafe-inline'/.test(scriptSrc),
 assert.ok(/object-src 'none'/.test(csp), 'object-src is not locked down');
 assert.ok(/base-uri 'none'/.test(csp), 'base-uri is not locked down');
 assert.ok(/form-action 'none'/.test(csp), 'form-action is not locked down');
+assert.ok(/frame-src 'none'/.test(csp), 'frame-src is not locked down');
 
 /* The only inline script left is the JSON-LD block; its hash must match. */
 const ld=/<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(webIndex);
