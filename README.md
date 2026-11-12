@@ -61,9 +61,9 @@ capped at 20 characters with ASCII letters/numbers, at most one space and
 one underscore.
 
 The relay sees room names, display names, chat, avatars and game state; it
-does not receive player IP addresses. A T-shirt you choose is shared with
-the players in your room. A modified host can cheat its own room; the relay
-cannot verify the host's game filtering.
+does not put player IP addresses into the protocol or room list. A T-shirt
+you choose is shared with the players in your room. A modified host can
+cheat its own room; the relay cannot verify the host's game filtering.
 
 Host changes replicate to joiners: tool-created and moving parts, grabbed
 bricks, beacon/regen geometry, explosions, and place-script Touched events

@@ -14,12 +14,16 @@ const assert=require('assert');
 const root=path.join(__dirname,'..');
 const webIndex=fs.readFileSync(path.join(root,'web/index.html'),'utf8');
 const rootIndex=fs.readFileSync(path.join(root,'index.html'),'utf8');
+const about=fs.readFileSync(path.join(root,'web/about.html'),'utf8');
 
 /* No inline event handlers: the page CSP has no script 'unsafe-inline'. */
 for (const html of [webIndex, rootIndex]) {
   assert.ok(!/\son(?:click|load|error|mouse\w+|key\w+)\s*=/i.test(html),
     'inline event handler found');
 }
+
+assert.ok(!/<script/i.test(about), 'about.html must not contain scripts');
+assert.ok(/Content-Security-Policy/.test(about), 'about.html has no CSP');
 
 /* script-src must not allow arbitrary inline script. */
 const csp=(webIndex.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/)||[])[1]||'';
