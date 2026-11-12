@@ -346,7 +346,7 @@ async function joinPlace(name, providedText, netOpts){
       if (ui.$hotbar) ui.$hotbar.style.display='none';
       const hh=document.getElementById('healthHud');
       if (hh) hh.style.display='none';
-      ui.notify('Hosting without a local player. Keep this tab open; joiners can play.');
+      ui.notify('Hosting without a local player. Keep this tab open and visible; joiners can play.');
     }
     /* high-part-count places can stutter on older hardware; the banner
      * carries the actual Workspace part total (threshold in ui.js) */

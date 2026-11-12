@@ -67,12 +67,13 @@ laser, GameTool/Grab, clone, hammer); custom BinType 0 Lua gear remains
 host-only.
 
 **Host (No Player)** creates the same room without a local character, for
-running a dedicated room in a browser tab. It still needs the tab open; a
-native headless server is not implemented. Duplicate display names get a
-numeric suffix (`Alice`, `Alice2`); the chat filter uses the expanded
-starter word list. When the place ships a Teams service, players are
-assigned to the fewest-member team and the overhead tag/player list take
-that team colour, replicated by the snapshot.
+running a dedicated room in a browser tab. It still needs the tab open and
+visible (browsers pause background-tab animation); a native headless server
+is not implemented. Duplicate display names get a numeric suffix (`Alice`,
+`Alice2`); the chat filter uses the expanded starter word list. When the
+place ships a Teams service, players are assigned to the fewest-member team
+and the overhead tag/player list take that team colour, replicated by the
+snapshot.
 
 ## Content and trust
 

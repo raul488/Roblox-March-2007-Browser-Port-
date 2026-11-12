@@ -8,7 +8,7 @@
  * ============================================================ */
 (function(){
   "use strict";
-  var n=77, label='launch-sync';
+  var n=78, label='host-note';
   window.PORT_BUILD={ n:n, label:label };
   if (typeof document==='undefined' || typeof document.body==='undefined' || !document.body) return;
   var d=document.createElement('div');
