@@ -306,6 +306,19 @@ async function main() {
   assert.ok(client.ui.players.some(p => p.name === 'Alice' && p.color === 'rgb(200,90,10)'),
     'player list did not take the team colour');
 
+  /* A host-side launch (jumppad/explosion) reaches the joiner's local
+   * predictor through the snapshot velocity. */
+  clientSession.onMessage({
+    from: 'host',
+    d: {
+      k: 's', t: 3.5, p: [
+        { i: 'host', p: [5, 3, 0], r: 0.5, v: [0, 0, 0], g: 1, h: 100, a: 1 },
+        { i: 'join', p: [0, 7, 0], r: 0, v: [0, 60, 0], g: 0, h: 100, a: 1 }
+      ]
+    }
+  });
+  assert.strictEqual(clientChar.velocity.y, 60, 'joiner did not take the host launch velocity');
+
   clientSession.onMessage({
     from: 'host',
     d: {

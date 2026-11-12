@@ -907,6 +907,15 @@
           }
           if (!this.selfSynced || err > 2.5 || Math.abs(p.y - y) > 3) p.set(x, y, z);
           this.selfSynced = true;
+          /* A host-side impulse (jumppad, explosion, beacon throw) must
+           * reach the local predictor: adopt the host velocity only when
+           * it differs by more than normal walk/jump drift. */
+          if (Array.isArray(e.v) && e.v.length >= 3 && this.character.velocity) {
+            var hvx = Number(e.v[0]) || 0, hvy = Number(e.v[1]) || 0, hvz = Number(e.v[2]) || 0;
+            var cv = this.character.velocity;
+            if (Math.abs(hvy - cv.y) > 8 || Math.abs(hvx - cv.x) > 8 || Math.abs(hvz - cv.z) > 8)
+              cv.set(hvx, hvy, hvz);
+          }
           var h = Number(e.h);
           if (isFinite(h)) this.character.health = Math.max(0, Math.min(200, h));
           var sc = Math.max(0, Math.min(4096, Number(e.c) || 0));
