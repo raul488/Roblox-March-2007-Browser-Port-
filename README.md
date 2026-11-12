@@ -38,6 +38,9 @@ The client is configured in `web/js/netconfig.js`:
 window.RBLX_RELAY_URL = 'https://relay.example.com';
 ```
 
+This build ships pointed at the Tailscale Funnel relay
+`https://desktop-33lh8ah.tail4210dd.ts.net`.
+
 Then add the same relay origins to the `connect-src` directive in
 `web/index.html`:
 
