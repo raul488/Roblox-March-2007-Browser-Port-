@@ -54,6 +54,30 @@ assert.ok(!/<script(?![^>]*\bsrc=)/i.test(rootIndex), 'root index has inline scr
 assert.ok(/<script src="redirect\.js"><\/script>/.test(rootIndex), 'root redirect script missing');
 assert.ok(fs.existsSync(path.join(root,'redirect.js')), 'redirect.js missing');
 
+/* T-shirt shelf: shipped textures only, no upload path. */
+assert.ok(/id="tshirtShelf"/.test(webIndex), 'T-shirt shelf missing');
+assert.ok(!/id="tshirtFile"|tshirtBrowse|tshirtClear/.test(webIndex),
+  'custom T-shirt upload controls are still present');
+const startpageSrc=fs.readFileSync(path.join(root,'web/js/startpage.js'),'utf8');
+assert.ok(!/FileReader|readAsDataURL/.test(startpageSrc),
+  'start page still reads arbitrary image files');
+assert.ok(webIndex.indexOf('js/tshirts.js') >= 0, 'tshirts.js is not loaded');
+assert.ok(webIndex.indexOf('<script src="js/tshirts.js">') <
+  webIndex.indexOf('<script src="js/startpage.js">'),
+  'tshirts.js must load before startpage.js');
+const shirtCtx={window:{}};
+require('vm').runInNewContext(
+  fs.readFileSync(path.join(root,'web/js/tshirts.js'),'utf8'), shirtCtx);
+const shirts=shirtCtx.window.RBLX_TSHIRTS;
+assert.ok(Array.isArray(shirts) && shirts.length >= 20, 'T-shirt shelf is empty');
+assert.ok(shirts.some(s => s.name === 'Matt Dusek Rox'), 'Matt Dusek Rox shirt missing');
+for (const shirt of shirts) {
+  assert.ok(/^content\/tshirts\/[a-z0-9-]+\.png$/.test(shirt.src),
+    'unexpected T-shirt path: ' + shirt.src);
+  assert.ok(fs.existsSync(path.join(root,'web',shirt.src)),
+    'missing T-shirt texture: ' + shirt.src);
+}
+
 /* Do not ship unreferenced PE stubs under the served web root. */
 function walk(dir) {
   for (const name of fs.readdirSync(dir)) {

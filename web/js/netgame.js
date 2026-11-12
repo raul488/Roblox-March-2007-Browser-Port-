@@ -114,8 +114,10 @@
    * never a problem and remote clients get a small PNG. */
   function shrinkShirt(url) {
     return new Promise(function (resolve) {
+      var curated = typeof url === 'string' &&
+        /^content\/tshirts\/[a-z0-9-]+\.png$/.test(url);
       if (!url || typeof url !== 'string' ||
-          !/^data:image\/(png|jpeg|webp);base64,/i.test(url) ||
+          (!curated && !/^data:image\/(png|jpeg|webp);base64,/i.test(url)) ||
           typeof document === 'undefined' || typeof Image === 'undefined') {
         resolve(null);
         return;

@@ -9,10 +9,9 @@ and place files.
 Built with opencode. The original client is MaximumADHD's
 [Roblox_0.3.368.0](https://github.com/MaximumADHD/Roblox_0.3.368.0).
 
-There are no online features in the default build. Play Solo works fully
-offline. Multiplayer is optional, peer-hosted, and requires your own private
-relay; the client never opens a peer-to-peer connection.
-
+Play Solo works fully offline. Multiplayer is optional and peer-hosted;
+this build points at the project's Tailscale Funnel relay by default (see
+`web/js/netconfig.js`). The client never opens a peer-to-peer connection.
 ## Run it
 
 Open `web/index.html` in any modern browser. It works from `file://`, with
@@ -24,6 +23,11 @@ onto the window.
 
 Place data, sounds, character.rbxm and three.js r128 are all embedded in
 `web/`. Play Solo needs no network and no install.
+
+The start page's avatar panel includes a free, horizontally scrolling shelf
+of 34 documented 2006-early-2007 catalog T-shirts (textures under
+`web/content/tshirts/`). There is no image upload; pick a box or `None`.
+Old data-URL shirts saved by earlier builds are cleared on load.
 
 ## Multiplayer
 

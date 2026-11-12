@@ -140,7 +140,6 @@ if (tabsEl && swEl){
       save();
       click();
       render();
-      renderShirt();                       // torso swatch drives the preview bg
     };
     swEl.appendChild(sw);
   }
@@ -167,71 +166,61 @@ if (resetBtn){
 }
 
 /* ------------------------------- T-shirt -------------------------------- */
-/* decomp RBX::ShirtGraphic : CharacterAppearance (TextureId)  one texture
- * drawn on the character's torso front; the start page stores it as a
- * data URL on window.RBLXplayer.tshirt and every LoadCharacter applies it
+/* The 2006-early-2007 catalog T-shirts ship under content/tshirts (see
+ * js/tshirts.js).  The start page stores the chosen path on
+ * window.RBLXplayer.tshirt and every LoadCharacter applies it
  * (rbxenv syncShirts / character.applyTshirt). */
-var SHIRT_LIMIT=900*1024;                 // localStorage-safe budget for the data URL
-var browseBtn=document.getElementById('tshirtBrowse');
-var clearBtn=document.getElementById('tshirtClear');
-var fileInput=document.getElementById('tshirtFile');
-var previewWrap=document.getElementById('tshirtPreview');
-var previewImg=document.getElementById('tshirtPreviewImg');
-var torsoBox=document.getElementById('tshirtTorso');
-/* the tabs block calls renderShirt() before these vars exist (hoisted var =
- * undefined there), so a stored shirt must be restored again once the
- * this section's elements are wired */
-renderShirt();
+var SHIRTS=Array.isArray(window.RBLX_TSHIRTS)?window.RBLX_TSHIRTS:[];
+var shirtShelf=document.getElementById('tshirtShelf');
+
+function shirtExists(url){
+  for (var i=0;i<SHIRTS.length;i++) if (SHIRTS[i].src===url) return true;
+  return false;
+}
+/* Old builds allowed arbitrary uploads; drop one from localStorage so the
+ * shelf only ever offers shipped shirts. */
+if (window.RBLXplayer.tshirt && !shirtExists(window.RBLXplayer.tshirt)){
+  window.RBLXplayer.tshirt=null;
+  save();
+}
 
 function renderShirt(){
-  var url=window.RBLXplayer.tshirt||null;
-  if (clearBtn) clearBtn.style.display=url? '' : 'none';
-  if (previewWrap) previewWrap.style.display=url? '' : 'none';
-  if (previewImg){
-    if (url) previewImg.src=url;
-    else previewImg.removeAttribute('src');
+  if (!shirtShelf) return;
+  var current=window.RBLXplayer.tshirt||null;
+  shirtShelf.innerHTML='';
+
+  function addItem(src,label,extra){
+    var b=document.createElement('button');
+    b.type='button';
+    b.className='tshirtItem'+(extra?' '+extra:'');
+    b.title=label;
+    b.setAttribute('aria-label',label);
+    b.setAttribute('aria-pressed', src===current ? 'true':'false');
+    if (src){
+      var img=document.createElement('img');
+      img.src=src;
+      img.alt='';
+      img.draggable=false;
+      img.loading='lazy';
+      b.appendChild(img);
+    } else {
+      b.textContent='None';
+    }
+    b.onclick=function(){ click(); setShirt(src); };
+    shirtShelf.appendChild(b);
   }
-  /* preview sits on the current torso color, like the shirt does in-game */
-  if (torsoBox){
-    var e=colorOf(window.RBLXplayer.colors.torso);
-    torsoBox.style.background=e? 'rgb('+e.rgb[0]+','+e.rgb[1]+','+e.rgb[2]+')' : '';
-  }
+
+  addItem(null,'No T-shirt (classic torso logo)');
+  for (var i=0;i<SHIRTS.length;i++) addItem(SHIRTS[i].src,SHIRTS[i].name);
 }
-function setShirt(dataUrl){
-  window.RBLXplayer.tshirt=dataUrl||null;
+function setShirt(src){
+  window.RBLXplayer.tshirt=src||null;
   save();
   renderShirt();
 }
-if (browseBtn && fileInput){
-  browseBtn.onclick=function(){
-    click();
-    fileInput.value='';
-    fileInput.click();
-  };
-  fileInput.addEventListener('change', function(){
-    var f=fileInput.files && fileInput.files[0];
-    if (!f) return;
-    if (!/^image\/(png|jpeg|gif|webp)$/i.test(f.type)) return;
-    var rd=new FileReader();
-    rd.onloadend=function(){
-      if (typeof rd.result!=='string') return;
-      if (rd.result.length>SHIRT_LIMIT){
-        if (torsoBox){
-          torsoBox.style.background='';
-          torsoBox.textContent='Too large ('+Math.round(rd.result.length/1024)+' KB)  use one under 900 KB';
-          setTimeout(renderShirt, 2600);
-        }
-        return;
-      }
-      setShirt(rd.result);
-      click();
-    };
-    rd.readAsDataURL(f);
-  });
-}
-if (clearBtn){
-  clearBtn.onclick=function(){ click(); setShirt(null); };
-}
+/* the tabs block calls renderShirt() before the shelf element is wired, so
+ * rebuild once here as well */
+renderShirt();
 
 /* ---------------------------- logo bounce ----------------------------- */
 /* Free fall under gravity from a small apex; each ground contact adds a
