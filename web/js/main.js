@@ -277,9 +277,18 @@ async function joinPlace(name, providedText, netOpts){
     ui.setTools(toolList);
 
     ui.onSelectTool=(i, t)=>{
+      if (netMode === 'client' && netgame){
+        netgame.equipTool(t);
+        return;
+      }
       if (!tools) return;
-      if (!t){ tools.unequip(); return; }
+      if (!t){
+        tools.unequip();
+        if (netgame && netgame.mode === 'host') netgame.localTool = null;
+        return;
+      }
       tools.equip(t.inst, character);
+      if (netgame && netgame.mode === 'host') netgame.localTool = t.binType || null;
       ui.chat('Equipped: '+t.name, null, '#ffff00');   // tips = yellow (class 6 switch, decomp FUN_005b8060)
     };
 
@@ -333,7 +342,6 @@ async function joinPlace(name, providedText, netOpts){
 
     document.getElementById('loadingBar').style.display='none';
     ui.showInGameHUD();
-    if (netMode === 'client' && ui.$hotbar) ui.$hotbar.style.display='none';
     if (headlessHost){
       if (ui.$hotbar) ui.$hotbar.style.display='none';
       const hh=document.getElementById('healthHud');
@@ -346,8 +354,8 @@ async function joinPlace(name, providedText, netOpts){
     if (window.RBLXsafechat) window.RBLXsafechat.mount();
     ui.chat(headlessHost
       ? 'Hosting without a local player · joiners can play'
-      : 'WASD move · Space jump · right-drag camera · wheel zoom · / chat' +
-        (netMode === 'client' ? ' · peer-hosted room' : ' · 1-0 tools'), null, '#ffff00');
+      : 'WASD move · Space jump · right-drag camera · wheel zoom · / chat · 1-0 tools' +
+        (netMode === 'client' ? ' · peer-hosted room' : ''), null, '#ffff00');
   } catch (err){
     console.error(err);
     ui.notify('Join failed: '+(err.message||err));
@@ -621,6 +629,7 @@ function step(dt){
   }
   t2=performance.now(); perf.toolsMs+=t2-t; t=t2;
   if (netgame){
+    netgame.setMouse(mouse, camera);
     netgame.step(dt, input, character, controller);
   }
   t2=performance.now(); perf.toolsMs+=t2-t; t=t2;

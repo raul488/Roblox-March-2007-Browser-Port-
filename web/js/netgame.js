@@ -137,6 +137,11 @@
       this.localRespawnAt = 0;
       this.partAcc = 0;
       this.fx = [];
+      this.mouse = null;
+      this.cameraView = null;
+      this.selectedTool = null;
+      this.toolAcc = 0;
+      this.localTool = null;
       this.chatAt = 0;
       this.chatLog = new Map();
       this.remoteChatTimes = [];
@@ -184,6 +189,86 @@
         this.character.playerName = name;
         if (this.character._drawTag) this.character._drawTag();
       }
+    }
+
+    setMouse(mouse, camera) {
+      this.mouse = mouse || null;
+      this.cameraView = camera || this.cameraView;
+    }
+
+    equipTool(t) {
+      if (this.mode !== 'client') return;
+      if (!t) {
+        this.selectedTool = null;
+        this.session.send({ k:'tool', e:2 });
+        if (this.character && this.character.setToolVisual) this.character.setToolVisual(null);
+        if (this.character) this.character.toolEquipped = false;
+        return;
+      }
+      var b = Number(t.binType) || 0;
+      if (!(b >= 1 && b <= 7)) {
+        if (this.ui && this.ui.notify) this.ui.notify('That custom gear is host-only.');
+        return;
+      }
+      this.selectedTool = { binType:b, name:t.name };
+      this.session.send({ k:'tool', e:1, b:b, name:t.name });
+      if (this.character && this.character.setToolVisual) this.character.setToolVisual(b);
+      if (this.character) this.character.toolEquipped = true;
+      if (this.ui && this.ui.chat) this.ui.chat('Equipped: ' + t.name, null, '#ffff00');
+    }
+
+    remoteTool(from, d) {
+      var rec = this.remotes.get(from);
+      if (!rec || !rec.character) return;
+      if (d.e === 2) {
+        rec.tool = null;
+        rec.toolBin = null;
+        rec.character.setToolVisual(null);
+        rec.character.toolEquipped = false;
+        return;
+      }
+      if (d.e === 1) {
+        var b = Number(d.b) || 0;
+        if (!(b >= 1 && b <= 7)) return;
+        var inv = (this.world && this.world.inventory) || [];
+        if (!inv.some(function (h) {
+          return (Number(h.props && h.props.BinType) || 0) === b;
+        })) return;
+        if (!window.RBLXtools || !window.RBLXtools.ToolManager) return;
+        var tm = new window.RBLXtools.ToolManager(this.scene, this.world, null);
+        tm.remote = true;
+        tm.character = rec.character;
+        tm.activeInst = null;
+        tm.activeKind = 'HopperBin';
+        tm.binType = b;
+        tm.hasScript = false;
+        tm.coolDown = 0;
+        rec.tool = { tm:tm, binType:b, name:String(d.name || ''), mouse:{ leftPressed:false, leftDown:false, x:0, y:0, ray:null } };
+        rec.toolBin = b;
+        rec.character.setToolVisual(b);
+        rec.character.toolEquipped = true;
+        return;
+      }
+      if (!rec.tool) return;
+      var m = rec.tool.mouse;
+      if (Array.isArray(d.o) && Array.isArray(d.d) && d.o.length >= 3 && d.d.length >= 3){
+        var ox=Number(d.o[0]), oy=Number(d.o[1]), oz=Number(d.o[2]);
+        var dx=Number(d.d[0]), dy=Number(d.d[1]), dz=Number(d.d[2]);
+        var len=Math.hypot(dx,dy,dz);
+        var p=rec.character.group.position;
+        if (isFinite(ox)&&isFinite(oy)&&isFinite(oz)&&len>0.001 &&
+            Math.hypot(ox-p.x,oy-p.y,oz-p.z) <= 120){
+          m.ray = {
+            origin: new THREE.Vector3(ox,oy,oz),
+            dir: new THREE.Vector3(dx/len,dy/len,dz/len)
+          };
+        }
+      }
+      var mx=Number(d.x), my=Number(d.y);
+      if (isFinite(mx)) m.x=mx;
+      if (isFinite(my)) m.y=my;
+      if (d.p) m.leftPressed=true;
+      m.leftDown=!!d.f;
     }
 
     updatePlayersUI() {
@@ -345,7 +430,8 @@
             input: { moveDir: new THREE.Vector3(), jump: false, climbAxis: 0 },
             lastInput: 0,
             carryLook: null,
-            carryPos: null
+            carryPos: null,
+            toolBin: 0
           };
           this.remotes.set(p.id, rec);
           rec.avatar = this.profiles.get(p.id) || null;
@@ -389,6 +475,7 @@
         rec.humanoid.onGround = false;
       }
       if (rec.avatar) this.applyAvatar(rec);
+      if (rec.toolBin && ch.setToolVisual) ch.setToolVisual(rec.toolBin);
       if (this.mode === 'host' && window.RBLXenv && window.RBLXenv.addNetPlayer) {
         window.RBLXenv.addNetPlayer(rec.id, rec.name, ch);
       }
@@ -435,6 +522,8 @@
           this.hostChat(msg.from, d.text);
         } else if (d.k === 'avatar') {
           this.receiveAvatar(msg.from, d);
+        } else if (d.k === 'tool') {
+          this.remoteTool(msg.from, d);
         }
         return;
       }
@@ -553,6 +642,10 @@
           }
           rec.humanoid.step(dt, rec.input);
           rec.character.step(dt, rec.input);
+          if (rec.tool && rec.tool.tm){
+            rec.tool.tm.update(dt, rec.tool.mouse, rec.character);
+            rec.tool.mouse.leftPressed = false;
+          }
         }
         this.snapAcc += dt;
         if (this.snapAcc >= 1 / SNAPSHOT_HZ) {
@@ -572,6 +665,25 @@
       if (this.inputAcc >= 1 / INPUT_HZ) {
         this.inputAcc = 0;
         this.sendInput();
+      }
+      if (this.selectedTool && this.mouse && this.world){
+        this.toolAcc += dt;
+        var edge = !!this.mouse.leftPressed;
+        if (edge || this.toolAcc >= 1 / INPUT_HZ){
+          this.toolAcc = 0;
+          var ray = null;
+          try {
+            if (this.cameraView && this.cameraView.updateMatrixWorld) this.cameraView.updateMatrixWorld(true);
+            if (this.world.rayFromCamera) ray = this.world.rayFromCamera(this.mouse.x, this.mouse.y);
+          } catch (_) {}
+          var tm = { k:'tool', e:0, p:edge, f:!!this.mouse.leftDown,
+                     x:this.mouse.x, y:this.mouse.y };
+          if (ray && ray.origin && ray.dir){
+            tm.o = [ray.origin.x, ray.origin.y, ray.origin.z];
+            tm.d = [ray.dir.x, ray.dir.y, ray.dir.z];
+          }
+          this.session.send(tm);
+        }
       }
       var k = Math.min(1, 12 * dt);
       for (var r of this.remotes.values()) {
@@ -699,7 +811,7 @@
       });
     }
 
-    playerState(id, ch) {
+    playerState(id, ch, toolBin) {
       var p = ch.group.position;
       var v = ch.velocity;
       return {
@@ -709,16 +821,17 @@
         v: [+(v.x || 0).toFixed(2), +(v.y || 0).toFixed(2), +(v.z || 0).toFixed(2)],
         g: ch.onGround ? 1 : 0,
         h: Math.max(0, Math.min(200, Number(ch.health) || 0)),
-        a: ch.alive ? 1 : 0
+        a: ch.alive ? 1 : 0,
+        t: Math.max(0, Math.min(7, Number(toolBin) || 0))
       };
     }
 
     sendSnapshot() {
       if (!this.session || !this.session.send) return;
       var list = [];
-      if (this.character) list.push(this.playerState(this.selfId, this.character));
+      if (this.character) list.push(this.playerState(this.selfId, this.character, this.localTool));
       for (var rec of this.remotes.values()) {
-        if (rec.character) list.push(this.playerState(rec.id, rec.character));
+        if (rec.character) list.push(this.playerState(rec.id, rec.character, rec.toolBin));
       }
       this.session.send({ k: 's', t: ++this.tick, p: list });
     }
@@ -774,7 +887,8 @@
             input: { moveDir: new THREE.Vector3(), jump: false, climbAxis: 0 },
             lastInput: 0,
             carryLook: null,
-            carryPos: null
+            carryPos: null,
+            toolBin: 0
           };
           this.remotes.set(e.i, rec);
           rec.avatar = this.profiles.get(e.i) || null;
@@ -792,6 +906,11 @@
         rec.health = Math.max(0, Math.min(200, Number(e.h) || 0));
         var wasDead = !rec.alive;
         rec.alive = e.a !== 0;
+        var tb = Math.max(0, Math.min(7, Number(e.t) || 0));
+        if (tb !== rec.toolBin){
+          rec.toolBin = tb;
+          if (rec.character && rec.character.setToolVisual) rec.character.setToolVisual(tb || null);
+        }
         if (wasDead && rec.alive) {
           rec.hasTarget = true;
           if (rec.character) {

@@ -44,6 +44,7 @@ class FakeCharacter {
   _drawTag() {}
   applyBodyColors(colors) { this.bodyColors = colors; }
   applyTshirt(url) { this.tshirt = url; }
+  setToolVisual(binType) { this.toolVisual = binType; }
   respawn() {
     this.alive = true;
     this.health = 100;
@@ -82,7 +83,8 @@ const NetGame = window.RBLXnetgame.NetGame;
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const scene = { remove() {} };
-const world = { spawnPoints: [{ cf: { pos: { x: 0, y: 0, z: 0 } } }] };
+const world = { spawnPoints: [{ cf: { pos: { x: 0, y: 0, z: 0 } } }],
+  inventory: [{ props: { BinType: 6 } }] };
 
 function makeUi() {
   const chats = [];
@@ -215,6 +217,33 @@ async function main() {
   assert.ok(clientUi.chats.some(c => c.text === 'welcome' && c.who === 'Alice'));
   client.chat('hi');
   assert.ok(clientSession.sent.some(m => m.k === 'c' && m.text === 'hi' && !('from' in m)));
+
+  /* Joiner tool controls are proxy managers on the host; only built-in
+   * BinTypes 1..7 are accepted, and the client sends equip/aim commands. */
+  class FakeToolManager {
+    constructor(){ this.updates = 0; }
+    update(){ this.updates++; }
+  }
+  window.RBLXtools = { ToolManager: FakeToolManager };
+  hostSession.onMessage({ from:'join', d:{ k:'tool', e:1, b:6, name:'Rocket' } });
+  assert.strictEqual(remote.toolBin, 6);
+  assert.strictEqual(remote.character.toolVisual, 6);
+  assert.ok(remote.tool && remote.tool.tm, 'host did not create a remote tool manager');
+  hostSession.onMessage({
+    from:'join',
+    d:{ k:'tool', e:0, p:true, f:true, x:100, y:100,
+        o:[0,3,0], d:[0,0,-1] }
+  });
+  host.step(1 / 60, { moveDir:new V3(), jump:false, climbAxis:0 }, hostChar, null);
+  assert.ok(remote.tool.tm.updates > 0, 'host did not update the remote tool');
+  assert.strictEqual(remote.tool.mouse.leftPressed, false);
+
+  client.equipTool({ binType:6, name:'Rocket' });
+  assert.ok(clientSession.sent.some(m => m.k === 'tool' && m.e === 1 && m.b === 6));
+  assert.strictEqual(clientChar.toolVisual, 6);
+  client.setMouse({ x:100, y:100, leftPressed:true, leftDown:true }, null);
+  client.step(1 / 30, { moveDir:new V3(), jump:false, climbAxis:0 }, clientChar, null);
+  assert.ok(clientSession.sent.some(m => m.k === 'tool' && m.e === 0 && m.p === true));
 
   /* Host-authoritative respawn: host local player, remote joiner, and the
    * joiner's own local body all come back after the 5 s timer. */

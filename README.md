@@ -61,8 +61,10 @@ characters with ASCII letters/numbers, at most one space and one underscore.
 Host changes replicate to joiners: tool-created and moving parts, grabbed
 bricks, beacon/regen geometry, explosions, and place-script Touched events
 (so remote players trigger jumppads and beacons). Remote characters are
-also carried by the moving assembly they stand on. The host's own tools
-work; joiner-held tools are the remaining tool gap.
+also carried by the moving assembly they stand on. Joiners can use the
+built-in BinTypes 1–7 through host-side proxy managers (rocket, slingshot,
+laser, GameTool/Grab, clone, hammer); custom BinType 0 Lua gear remains
+host-only.
 
 **Host (No Player)** creates the same room without a local character, for
 running a dedicated room in a browser tab. It still needs the tab open; a

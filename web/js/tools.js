@@ -190,6 +190,7 @@ class ToolManager {
     this.pendingEquip=null;       // fire Equipped after tool scripts start
     this.lastLeftDown=false;
     this._heldKeys=new Set();     // ignore keyboard auto-repeat for R/T
+    this.remote=false;            // host-side proxy for a joiner: no global mouse/scripts
   }
   setCharacter(ch){ this.character=ch||this.character; }
   /* the shipped gear rbxm files (embedded in coreAssets.js) are run by the
@@ -567,8 +568,8 @@ class ToolManager {
     }
 
     const E=window.RBLXenv;
-    if (E&&E.updateMouse) E.updateMouse(mouse);
-    const mouseW=E? E.getMouse() : null;
+    if (E&&E.updateMouse&&!this.remote) E.updateMouse(mouse);
+    const mouseW=E? (this.remote? mouse : E.getMouse()) : null;
 
     /* Tool scripts are launched when the Tool parents into the character;
      * fire Equipped on the next frame so their main body has connected. */
@@ -583,7 +584,7 @@ class ToolManager {
 
     const pressed=!!mouse.leftPressed;
     const down=!!mouse.leftDown;
-    if (E){
+    if (E&&!this.remote){
       if (pressed) E.mouseDown();
       if (this.lastLeftDown&&!down) E.mouseUp();
     }
@@ -603,7 +604,7 @@ class ToolManager {
     if (this.activeKind!=='HopperBin'||this.hasScript) return;
     if (this.coolDown>0){ this.coolDown-=dt; return; }
     if (!this.binType||this.binType===0) return;
-    const ray=w.rayFromCamera(mouse.x, mouse.y);
+    const ray=mouse.ray || w.rayFromCamera(mouse.x, mouse.y);
     switch (this.binType){
       /* 6 Rocket  ShootTool port (FUN_005c9230); the shaft comes from the
        * shipped Rocket.rbxm and the script itself drives the 7*error servo */
