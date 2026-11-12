@@ -19,6 +19,27 @@
   var INPUT_TIMEOUT = 500;
   var RESPAWN_MS = 5000;
   var AVATAR_SHIRT_LIMIT = 48 * 1024;
+  var MAX_SNAPSHOT_ENTRIES = 64;
+  var MAX_REMOTES = 32;
+  var MAX_PROFILES = 32;
+  var MAX_NET_PARTS = 4096;         /* runtime parts above the loaded place */
+  var MAX_NET_PARTS_PER_SEC = 1024; /* regen models can coincide in a burst */
+
+  function finiteNum(value, fallback) {
+    var n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+  }
+
+  function clampNum(value, min, max, fallback) {
+    var n = Number(value);
+    if (!Number.isFinite(n)) n = fallback;
+    return Math.min(max, Math.max(min, n));
+  }
+
+  function wrapYaw(value) {
+    var n = finiteNum(value, 0);
+    return ((n % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+  }
 
   function filterChat(text) {
     if (window.RBLXchatfilter && window.RBLXchatfilter.clean) {
@@ -146,6 +167,10 @@
       this.chatAt = 0;
       this.chatLog = new Map();
       this.remoteChatTimes = [];
+      /* client-side limits against a malicious host */
+      this.netBase = (window.RBLXenv && window.RBLXenv.state && window.RBLXenv.state.netMap)
+        ? window.RBLXenv.state.netMap.size : 0;
+      this.netCreateWin = null;
 
       var localPlayer = window.RBLXplayer || {};
       this.avatar = { colors: readColors(localPlayer.colors), shirt: null };
@@ -238,16 +263,24 @@
     remoteTool(from, d) {
       var rec = this.remotes.get(from);
       if (!rec || !rec.character) return;
-      if (d.e === 2) {
+      var e = Number(d.e);
+      if (e !== 0 && e !== 1 && e !== 2) return;
+      var now = performance.now();
+      if (e !== 0) {
+        if (rec.toolAt && now - rec.toolAt < 250) return;
+        rec.toolAt = now;
+      }
+      if (e === 2) {
         rec.tool = null;
         rec.toolBin = null;
         rec.character.setToolVisual(null);
         rec.character.toolEquipped = false;
         return;
       }
-      if (d.e === 1) {
-        var b = Number(d.b) || 0;
-        if (!(b >= 1 && b <= 7)) return;
+      if (e === 1) {
+        var b = Number(d.b);
+        if (!Number.isInteger(b) || b < 1 || b > 7) return;
+        if (rec.toolBin === b) return;              // already held
         var inv = (this.world && this.world.inventory) || [];
         if (!inv.some(function (h) {
           return (Number(h.props && h.props.BinType) || 0) === b;
@@ -261,7 +294,8 @@
         tm.binType = b;
         tm.hasScript = false;
         tm.coolDown = 0;
-        rec.tool = { tm:tm, binType:b, name:String(d.name || ''), mouse:{ leftPressed:false, leftDown:false, x:0, y:0, ray:null } };
+        rec.tool = { tm:tm, binType:b, name:String(d.name || '').slice(0, 40),
+                     mouse:{ leftPressed:false, leftDown:false, x:0, y:0, ray:null } };
         rec.toolBin = b;
         rec.character.setToolVisual(b);
         rec.character.toolEquipped = true;
@@ -339,6 +373,7 @@
 
     receiveAvatar(from, d) {
       if (!from || from === this.selfId || this.avatarSeen.has(from)) return;
+      if (this.profiles.size >= MAX_PROFILES) return;
       var profile = sanitizeAvatar(d);
       if (!profile) return;
       this.avatarSeen.add(from);
@@ -376,8 +411,9 @@
     }
 
     applyAvatarMessage(d) {
-      if (!d || !d.id || d.id === this.selfId) return;
+      if (!d || typeof d.id !== 'string' || !d.id || d.id.length > 64 || d.id === this.selfId) return;
       if (this.avatarSeen.has(d.id)) return;
+      if (this.profiles.size >= MAX_PROFILES) return;
       var profile = sanitizeAvatar(d);
       if (!profile) return;
       this.avatarSeen.add(d.id);
@@ -439,6 +475,7 @@
         var rec = this.remotes.get(p.id);
         if (!rec) {
           if (this.mode !== 'host') continue;   /* clients create from snapshots */
+          if (this.remotes.size >= MAX_REMOTES) continue;
           rec = {
             id: p.id,
             name: p.name || 'Player',
@@ -457,6 +494,7 @@
             carryLook: null,
             carryPos: null,
             toolBin: 0,
+            toolAt: 0,
             teamColor: 0
           };
           this.remotes.set(p.id, rec);
@@ -541,10 +579,12 @@
         if (d.k === 'i') {
           var rec = this.remotes.get(msg.from);
           if (!rec) return;
-          rec.input.moveDir.set(Number(d.x) || 0, 0, Number(d.z) || 0);
+          rec.input.moveDir.set(
+            clampNum(d.x, -1, 1, 0), 0, clampNum(d.z, -1, 1, 0)
+          );
           if (rec.input.moveDir.lengthSq() > 1) rec.input.moveDir.normalize();
-          rec.input.jump = !!d.j;
-          rec.input.climbAxis = Number(d.c) || 0;
+          rec.input.jump = d.j === true;
+          rec.input.climbAxis = clampNum(d.c, -1, 1, 0);
           rec.lastInput = performance.now();
         } else if (d.k === 'c') {
           this.hostChat(msg.from, d.text);
@@ -719,9 +759,10 @@
         if (!ch) continue;
         if (r.hasTarget) {
           ch.group.position.lerp(r.target, k);
-          var dy = r.targetYaw - ch.group.rotation.y;
-          while (dy > Math.PI) dy -= Math.PI * 2;
-          while (dy < -Math.PI) dy += Math.PI * 2;
+          var dy = wrapYaw(r.targetYaw) - ch.group.rotation.y;
+          dy = ((dy % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+          if (dy > Math.PI) dy -= Math.PI * 2;
+          if (!isFinite(dy)) dy = 0;
           ch.group.rotation.y += dy * k;
         }
         ch.velocity.copy(r.velocity);
@@ -763,12 +804,18 @@
       if (!E || !E.state || !E.state.world) return;
       var list = Array.isArray(d.p) ? d.p : [];
       if (list.length > 256) list = list.slice(0, 256);
+      var now = performance.now();
+      if (!this.netCreateWin || now - this.netCreateWin.t >= 1000) {
+        this.netCreateWin = { t: now, n: 0 };
+      }
       for (var i = 0; i < list.length; i++){
         var p = list[i];
         if (!p || !p.i) continue;
         var inst = E.state.netMap.get(p.i);
         if (p.n && !inst){
-          E.createNetPart(p);
+          var made = E.state.netMap.size - this.netBase;
+          if (made >= MAX_NET_PARTS || this.netCreateWin.n >= MAX_NET_PARTS_PER_SEC) continue;
+          if (E.createNetPart(p)) this.netCreateWin.n++;
         } else if (inst){
           E.applyNetPart(inst, p);
         }
@@ -796,10 +843,13 @@
       if (this.fx.length >= 32) return;
       if (f.t === 'l'){
         if (!Array.isArray(f.a) || !Array.isArray(f.b) || f.a.length < 3 || f.b.length < 3) return;
+        var ax=Number(f.a[0]), ay=Number(f.a[1]), az=Number(f.a[2]);
+        var bx=Number(f.b[0]), by=Number(f.b[1]), bz=Number(f.b[2]);
+        if (![ax,ay,az,bx,by,bz].every(Number.isFinite)) return;
         try {
           var lg = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(Number(f.a[0]), Number(f.a[1]), Number(f.a[2])),
-            new THREE.Vector3(Number(f.b[0]), Number(f.b[1]), Number(f.b[2]))
+            new THREE.Vector3(ax, ay, az),
+            new THREE.Vector3(bx, by, bz)
           ]);
           var lm = new THREE.LineBasicMaterial({ color:0xff3010, transparent:true, opacity:0.85 });
           var line = new THREE.Line(lg, lm);
@@ -809,14 +859,16 @@
         return;
       }
       if (f.t !== 'e' || !Array.isArray(f.p) || f.p.length < 3) return;
-      var radius = Math.max(0.5, Math.min(64, Number(f.r) || 4));
+      var ex=Number(f.p[0]), ey=Number(f.p[1]), ez=Number(f.p[2]);
+      if (![ex,ey,ez].every(Number.isFinite)) return;
+      var radius = clampNum(f.r, 0.5, 64, 4);
       try {
         var geo = new THREE.SphereGeometry(1, 15, 15);
         var mat = new THREE.MeshBasicMaterial({
           color: 0xffb000, transparent: true, opacity: 0.9, depthWrite: false
         });
         var mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(Number(f.p[0]) || 0, Number(f.p[1]) || 0, Number(f.p[2]) || 0);
+        mesh.position.set(ex, ey, ez);
         mesh.scale.setScalar(0.1);
         this.scene.add(mesh);
         this.fx.push({ mesh: mesh, mat: mat, geo: geo, age: 0, radius: radius, life: 0.5 });
@@ -882,12 +934,14 @@
 
     applySnapshot(d) {
       if (!Array.isArray(d.p)) return;
-      for (var i = 0; i < d.p.length; i++) {
+      var entries = Math.min(d.p.length, MAX_SNAPSHOT_ENTRIES);
+      for (var i = 0; i < entries; i++) {
         var e = d.p[i];
-        if (!e || typeof e.i !== 'string' || !Array.isArray(e.p) || e.p.length < 3) continue;
+        if (!e || typeof e.i !== 'string' || !e.i || e.i.length > 64 ||
+            !Array.isArray(e.p) || e.p.length < 3) continue;
         var x = Number(e.p[0]), y = Number(e.p[1]), z = Number(e.p[2]);
         if (!isFinite(x) || !isFinite(y) || !isFinite(z)) continue;
-        var yaw = Number(e.r) || 0;
+        var yaw = wrapYaw(e.r);
 
         if (e.i === this.selfId) {
           if (!this.character) continue;
@@ -911,7 +965,9 @@
            * reach the local predictor: adopt the host velocity only when
            * it differs by more than normal walk/jump drift. */
           if (Array.isArray(e.v) && e.v.length >= 3 && this.character.velocity) {
-            var hvx = Number(e.v[0]) || 0, hvy = Number(e.v[1]) || 0, hvz = Number(e.v[2]) || 0;
+            var hvx = clampNum(e.v[0], -1000, 1000, 0);
+            var hvy = clampNum(e.v[1], -1000, 1000, 0);
+            var hvz = clampNum(e.v[2], -1000, 1000, 0);
             var cv = this.character.velocity;
             if (Math.abs(hvy - cv.y) > 8 || Math.abs(hvx - cv.x) > 8 || Math.abs(hvz - cv.z) > 8)
               cv.set(hvx, hvy, hvz);
@@ -929,6 +985,7 @@
 
         var rec = this.remotes.get(e.i);
         if (!rec) {
+          if (this.remotes.size >= MAX_REMOTES) continue;
           var name = this.nameOf(e.i);
           rec = {
             id: e.i,
@@ -948,6 +1005,7 @@
             carryLook: null,
             carryPos: null,
             toolBin: 0,
+            toolAt: 0,
             teamColor: 0
           };
           this.remotes.set(e.i, rec);
@@ -960,18 +1018,22 @@
         rec.target.set(x, y, z);
         rec.targetYaw = yaw;
         if (Array.isArray(e.v) && e.v.length >= 3) {
-          rec.velocity.set(Number(e.v[0]) || 0, Number(e.v[1]) || 0, Number(e.v[2]) || 0);
+          rec.velocity.set(
+            clampNum(e.v[0], -1000, 1000, 0),
+            clampNum(e.v[1], -1000, 1000, 0),
+            clampNum(e.v[2], -1000, 1000, 0)
+          );
         }
         rec.onGround = !!e.g;
-        rec.health = Math.max(0, Math.min(200, Number(e.h) || 0));
+        rec.health = clampNum(e.h, 0, 200, 0);
         var wasDead = !rec.alive;
         rec.alive = e.a !== 0;
-        var tb = Math.max(0, Math.min(7, Number(e.t) || 0));
+        var tb = clampNum(e.t, 0, 7, 0);
         if (tb !== rec.toolBin){
           rec.toolBin = tb;
           if (rec.character && rec.character.setToolVisual) rec.character.setToolVisual(tb || null);
         }
-        var tc = Math.max(0, Math.min(4096, Number(e.c) || 0));
+        var tc = clampNum(e.c, 0, 4096, 0);
         if (tc !== rec.teamColor){
           rec.teamColor = tc;
           if (rec.character && rec.character.setTagColor) rec.character.setTagColor(this.teamCSS(tc));

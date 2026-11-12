@@ -38,6 +38,8 @@ const perf=window.__perf={
 };
 
 let renderer, scene, camera, world=null, character=null, controller=null, tools=null, sjobs=null, netgame=null;
+const MAX_PLACE_BYTES = 32 * 1024 * 1024;
+const MAX_PLACE_INSTANCES = 50000;
 let clock=new THREE.Clock();
 let loginEl=null;                 /* cached start-page overlay (loop idles on it) */
 let canRender=true;               /* false while unfocused/hidden (skip the GPU) */
@@ -147,25 +149,18 @@ function boot(){
   document.addEventListener('visibilitychange', refreshRenderGate);
 
   const open=document.getElementById('openFile');
-  open.onchange=e=>{
-    const f=open.files[0]; if (!f) return;
-    const r=new FileReader();
-    r.onloadend=()=>joinPlace(f.name.replace(/\.(rbxlx|rbxl|xml)$/i,''), r.result);
-    r.readAsText(f, 'latin1');
-  };
+  open.onchange=e=>loadLocalPlace(open.files[0]);
   const login=document.getElementById('login');
   loginEl=login;
   login.addEventListener('dragover', e=>e.preventDefault());
   login.addEventListener('drop', e=>{
     e.preventDefault();
-    const f=e.dataTransfer.files[0]; if (!f) return;
-    const r=new FileReader();
-    r.onloadend=()=>joinPlace(f.name.replace(/\.(rbxlx|rbxl|xml)$/i,''), r.result);
-    r.readAsText(f, 'latin1');
+    loadLocalPlace(e.dataTransfer.files[0]);
   });
   bindInput(canvas);
   bindCameraControls();
   bindReportButton();
+  bindChrome();
   requestAnimationFrame(loop);
 }
 
@@ -192,7 +187,10 @@ function refreshRenderGate(){
 
 /* --------------------------- lazy place loading --------------------------- */
 function ensurePlaceScript(name){
+  const list=Array.isArray(window.PLACE_REGISTRY)? window.PLACE_REGISTRY : [];
+  if (list.indexOf(name)<0) return Promise.reject(new Error('unknown place'));
   const file=(window.PLACE_FILES&&window.PLACE_FILES[name])||name;
+  if (!/^[A-Za-z0-9 _-]+$/.test(file)) return Promise.reject(new Error('bad place name'));
   return new Promise((res, rej)=>{
     const s=document.createElement('script');
     s.src='places/'+file+'.rbxl.js';
@@ -200,6 +198,23 @@ function ensurePlaceScript(name){
     s.onerror=()=>rej(new Error('missing places/'+file+'.rbxl.js'));
     document.head.appendChild(s);
   });
+}
+
+/* A dropped/opened place is untrusted code: its Lua scripts run locally.
+ * Keep the read bounded and warn before handing it to the parser. */
+function loadLocalPlace(f){
+  if (!f) return;
+  if (f.size > MAX_PLACE_BYTES) {
+    ui.notify('Place file is too large (limit '+Math.round(MAX_PLACE_BYTES/1024/1024)+' MB).');
+    return;
+  }
+  ui.notify('Opening a place runs its embedded scripts. Only open files you trust.');
+  const r=new FileReader();
+  r.onloadend=()=>{
+    if (typeof r.result!=='string'){ ui.notify('Could not read that place file.'); return; }
+    joinPlace(f.name.replace(/\.(rbxlx|rbxl|xml)$/i,''), r.result);
+  };
+  r.readAsText(f, 'latin1');
 }
 
 async function joinPlace(name, providedText, netOpts){
@@ -232,6 +247,9 @@ async function joinPlace(name, providedText, netOpts){
       throw new Error('binary rbxl not supported (re-save the place as XML)');
     }
     const parsed=window.RBLXxml.parseRbx(text);
+    if (parsed.instances.length > MAX_PLACE_INSTANCES) {
+      throw new Error('Place has too many instances (limit '+MAX_PLACE_INSTANCES+').');
+    }
     // rebuild scene fresh
     while (scene.children.length) scene.remove(scene.children[0]);
     world=new window.RBLXworld.WorldBuilder(scene);
@@ -555,6 +573,28 @@ function bindReportButton(){
   b.addEventListener('mouseleave',()=>set(''));
   b.addEventListener('mousedown',()=>set('_dn'));
   b.addEventListener('mouseup',()=>set('_ovr'));
+}
+
+/* The index chrome used inline onclick handlers; CSP now blocks those, so
+ * bind the same actions here. */
+function bindChrome(){
+  const bind=(id,fn)=>{
+    const el=document.getElementById(id);
+    if (el) el.addEventListener('click',fn);
+  };
+  bind('menuToolbox',()=>ui.notify('Toolbox is part of the studio build, not this play client.'));
+  bind('menuEdit',()=>ui.notify('This is the play client.'));
+  bind('menuHelp',()=>ui.notify('WASD move · Space jump · right-drag camera · wheel zoom · / chat · 1-0 tools'));
+  bind('menuFullscreen',()=>{
+    try {
+      if (document.documentElement.requestFullscreen)
+        document.documentElement.requestFullscreen().catch(()=>{});
+    } catch(_){}
+  });
+  bind('menuExit',()=>{ if (window.__leaveGame) window.__leaveGame(); });
+  bind('perfWarn',()=>ui.hidePerfWarning());
+  bind('reportBtn',()=>ui.notify('Report Abuse is unavailable in this offline port.'));
+  bind('downloadCta',()=>ui.notify('Nothing to download  you are already playing the 2007 client in your browser. Pick a place above!'));
 }
 /* The client's lower-right camera pad (CameraTiltUp/ZoomIn/TiltDown/ZoomOut
  * circle icons, two columns).  Each press is one step, like the toolbar

@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <title>Roblox 0.3.368 (March 2007) browser port</title>
 <meta name="description" content="Play the March 2007 Roblox client (0.3.368) in your browser: classic places, avatar colours, chat and tools, no install.">
 <meta name="robots" content="index,follow">
@@ -20,13 +21,7 @@
   body{ display:flex; align-items:center; justify-content:center; text-align:center; }
   a{ color:#8fc3f2; }
 </style>
-<script>
-  (function () {
-    // Preserve ?query and #hash across the hop.
-    var target = 'web/' + location.search + location.hash;
-    location.replace(target);
-  })();
-</script>
+<script src="redirect.js"></script>
 </head>
 <body>
   <p>Redirecting to the client…<br>

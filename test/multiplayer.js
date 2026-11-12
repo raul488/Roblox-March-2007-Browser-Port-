@@ -95,6 +95,7 @@ global.location = { hostname: '127.0.0.1' };
 global.WebSocket = FakeWebSocket;
 global.fetch = (url, opts) => { fetchCalls++; return fetchImpl(url, opts); };
 global.RBLXplayer = { name: 'Tester' };
+global.PLACE_REGISTRY = ['Crossroads'];
 
 const realSetInterval = global.setInterval;
 const realClearInterval = global.clearInterval;
@@ -238,12 +239,14 @@ async function main() {
   const gameWs = FakeWebSocket.instances[FakeWebSocket.instances.length - 1];
   gameWs.open();
   gameWs.message({
-    t: 'welcome', v: 1, room: 'gameroom1234567890abcd', place: 'Crossroads',
+    t: 'welcome', v: 1, room: 'gameroom1234567890abcd', place: '../evil',
     self: 'host1', host: 'host1', max: 16,
     players: [{ id: 'host1', name: 'Tester', host: true }]
   });
   assert.ok(started, 'game hook was not called');
   assert.strictEqual(started.mode, 'host');
+  assert.strictEqual(started.session.place, 'Crossroads',
+    'relay place was trusted over the locally selected place');
   assert.strictEqual(started.session.room, 'gameroom1234567890abcd');
   assert.strictEqual(started.session.self, 'host1');
   assert.strictEqual(E('roomLobby').style.display, 'none');

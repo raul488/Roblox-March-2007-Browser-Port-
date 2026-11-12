@@ -6,8 +6,9 @@
      embedded, plus the one configured multiplayer relay.  This keeps a
      place file's TextureId/SoundId URLs (and any injected markup) from
      phoning home.
-     - 'unsafe-inline' is required by the existing inline <style> block and
-       the toolbar's onclick= handlers.
+     - style-src keeps 'unsafe-inline' for the page's CSS; script-src does
+       not. The only inline script left is the JSON-LD block, allowed by
+       its SHA-256 hash. All chrome handlers are bound from js/main.js.
      - data: carries the embedded fonts, sky textures, sounds and the
        base64 assets some places ship; blob: is the T-shirt preview.
      - file: keeps double-click (file://) usage working, where 'self' does
@@ -15,7 +16,7 @@
      - The local relay origins are for development.  When you set
        RBLX_RELAY_URL in js/netconfig.js, add its exact HTTPS and WSS
        origins here and remove the local ones if you do not need them. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob:; script-src 'self' file: 'unsafe-inline'; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data: blob:; media-src 'self' file: data: blob:; font-src 'self' file: data:; connect-src 'self' file: http://127.0.0.1:8788 ws://127.0.0.1:8788 http://localhost:8788 ws://localhost:8788; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob:; script-src 'self' file: 'sha256-dV6LOvITbnrcB9f9LpEWQCMa/UMM0ux7mbVFb7tyL9Y='; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data: blob:; media-src 'self' file: data: blob:; font-src 'self' file: data:; connect-src 'self' file: http://127.0.0.1:8788 ws://127.0.0.1:8788 http://localhost:8788 ws://localhost:8788; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Play Roblox 0.3.368 (March 2007) in your browser</title>
 <meta name="description" content="Play the March 2007 Roblox client (version 0.3.368) in your browser. A WebGL port of the original engine, with the classic places, avatar colours, chat and tools, no install, no account.">
 <meta name="robots" content="index,follow,max-image-preview:large">
@@ -281,11 +282,11 @@ input{ cursor:text; }
 
 <!-- classic 2007 top bar (Play Solo)  labels from the real client/decomp -->
 <div id="menubar">
-  <span onclick="window.RBLXui_instance_open.notify('Toolbox is part of the studio build, not this play client.')">Toolbox</span>
-  <span onclick="window.RBLXui_instance_open.notify('This is the play client.')">Edit Mode</span>
-  <span onclick="window.RBLXui_instance_open.notify('WASD move · Space jump · right-drag camera · wheel zoom · / chat · 1-0 tools')">Help...</span>
-  <span onclick="document.documentElement.requestFullscreen && document.documentElement.requestFullscreen()">Fullscreen</span>
-  <span onclick="window.__leaveGame()">Exit</span>
+  <span id="menuToolbox">Toolbox</span>
+  <span id="menuEdit">Edit Mode</span>
+  <span id="menuHelp">Help...</span>
+  <span id="menuFullscreen">Fullscreen</span>
+  <span id="menuExit">Exit</span>
 </div>
 
 <div id="playerList">
@@ -305,8 +306,7 @@ input{ cursor:text; }
 <div id="notif"></div>
 <div id="messageBox"></div>
 <div id="hintBox"></div>
-<div id="perfWarn" role="alert" title="Click to dismiss"
-     onclick="window.RBLXui_instance_open.hidePerfWarning()"></div>
+<div id="perfWarn" role="alert" title="Click to dismiss"></div>
 <div id="hotbar"></div>
 <div id="cameraControls">
   <img src="content/textures/CameraTiltUp.png"   data-cam="tiltUp"   alt="Tilt Up"   title="Tilt Up">
@@ -314,8 +314,7 @@ input{ cursor:text; }
   <img src="content/textures/CameraTiltDown.png" data-cam="tiltDown" alt="Tilt Down" title="Tilt Down">
   <img src="content/textures/CameraZoomOut.png"  data-cam="zoomOut"  alt="Zoom Out"  title="Zoom Out">
 </div>
-<button type="button" id="reportBtn" title="Report Abuse" aria-label="Report Abuse"
-        onclick="window.RBLXui_instance_open.notify('Report Abuse is unavailable in this offline port.')">
+<button type="button" id="reportBtn" title="Report Abuse" aria-label="Report Abuse">
   <img src="content/textures/ReportAbuse.PNG" alt="Report">
 </button>
 
@@ -349,6 +348,7 @@ input{ cursor:text; }
       <div class="pl" style="pointer-events:none;color:#778">Loading place list…</div>
     </div>
     <input type="file" id="openFile" accept=".rbxl,.rbxlx,.rbxm,.xml">
+    <div class="cfgHint">Opening a place runs its embedded scripts. Only open files you trust.</div>
     <!-- avatar config: name + body colors (window.RBLXplayer, js/startpage.js) -->
     <div class="avatarCfg">
       <div class="cfgRow">
@@ -384,8 +384,7 @@ input{ cursor:text; }
     </div>
     <!-- the 2007 site's "FREE - Download and Play!" CTA (images/download.png);
          clicking it notifies  nothing to download, everything is embedded -->
-    <img class="dlCta" src="images/download.png" alt="FREE - Download and Play!" title="FREE - Download and Play!"
-         onclick="window.RBLXui_instance_open && window.RBLXui_instance_open.notify('Nothing to download  you are already playing the 2007 client in your browser. Pick a place above!')">
+    <img class="dlCta" id="downloadCta" src="images/download.png" alt="FREE - Download and Play!" title="FREE - Download and Play!">
   </div>
 </div>
 

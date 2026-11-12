@@ -874,9 +874,9 @@ function createNetPart(p){
     return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d;
   };
   if (p.s) inst.props.size = {
-    x:clamp(p.s[0], 0.1, 2048, 1),
-    y:clamp(p.s[1], 0.1, 2048, 1),
-    z:clamp(p.s[2], 0.1, 2048, 1)
+    x:clamp(p.s[0], 0.1, 1024, 1),
+    y:clamp(p.s[1], 0.1, 1024, 1),
+    z:clamp(p.s[2], 0.1, 1024, 1)
   };
   if (p.f && p.f.length >= 12){
     const f = p.f.slice(0,12).map(n => clamp(n, -1e7, 1e7, 0));

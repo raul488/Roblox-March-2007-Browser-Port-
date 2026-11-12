@@ -57,7 +57,8 @@
   function cleanPlayers(list) {
     if (!Array.isArray(list)) return [];
     var out = [];
-    for (var i = 0; i < list.length && out.length < 16; i++) {
+    var limit = Math.min(list.length, 64);
+    for (var i = 0; i < limit && out.length < 16; i++) {
       var p = cleanPlayer(list[i]);
       if (p) out.push(p);
     }
@@ -91,6 +92,11 @@
 
   function setStatus(el, text) {
     setText(el, text);
+  }
+
+  function knownPlace(name) {
+    var list = Array.isArray(window.PLACE_REGISTRY) ? window.PLACE_REGISTRY : [];
+    return list.indexOf(String(name || '')) >= 0;
   }
 
   /* ------------------------- mode chooser ------------------------- */
@@ -168,7 +174,7 @@
         if (!data || data.v !== 1 || !Array.isArray(data.rooms)) {
           throw new Error('bad room list');
         }
-        renderRooms(data.rooms);
+        renderRooms(data.rooms.slice(0, 64));
         setStatus(els.sbStatus, '');
       })
       .catch(function () {
@@ -320,15 +326,22 @@
   function handleMessage(message) {
     if (message.t === 'welcome') {
       if (state.session) return;
+      var welcomePlace = knownPlace(state.place) ? String(state.place)
+        : (knownPlace(message.place) ? String(message.place) : '');
+      if (!welcomePlace) {
+        closeSocket();
+        if (state.browsing) setStatus(els.sbStatus, 'The relay sent an unknown place.');
+        return;
+      }
       if (state.connectTimer) {
         clearTimeout(state.connectTimer);
         state.connectTimer = null;
       }
       state.session = {
-        room: String(message.room || ''),
-        place: String(message.place || state.place || ''),
-        self: String(message.self || ''),
-        host: String(message.host || ''),
+        room: String(message.room || '').slice(0, 64),
+        place: welcomePlace,
+        self: String(message.self || '').slice(0, 64),
+        host: String(message.host || '').slice(0, 64),
         max: Math.max(2, Math.min(16, Number(message.max) || 16)),
         players: cleanPlayers(message.players),
         onMessage: null,
@@ -424,6 +437,9 @@
     }
 
     if (message.t === 'cmd') {
+      /* The relay only sends cmd to the host. A compromised relay must not
+       * be able to push host messages into a joiner's NetGame. */
+      if (state.mode !== 'host') return;
       if (state.session && typeof state.session.onMessage === 'function') {
         state.session.onMessage({ from: message.from, d: message.d });
       }
@@ -431,6 +447,7 @@
     }
 
     if (message.t === 'state') {
+      if (state.mode !== 'join') return;
       if (state.session && typeof state.session.onMessage === 'function') {
         state.session.onMessage({ from: state.session.host, d: message.d });
       }

@@ -268,6 +268,45 @@ async function main() {
   assert.ok(clientSession.sent.some(m => m.k === 'tool' && m.e === 2));
   assert.ok(/host-only/.test(clientUi.note || ''));
 
+  /* A malicious host cannot hang a joiner with a non-finite yaw, and the
+   * input clamp keeps a joiner's Infinity out of the host simulation. */
+  clientSession.onMessage({
+    from: 'host',
+    d: {
+      k: 's', t: 2.5, p: [
+        { i: 'host', p: [5, 3, 0], r: '1e999', v: [0, 0, 0], g: 1, h: 100, a: 1 }
+      ]
+    }
+  });
+  assert.ok(Number.isFinite(hostAvatar.targetYaw), 'non-finite yaw survived the snapshot');
+  hostSession.onMessage({
+    from: 'join',
+    d: { k: 'i', x: '1e999', z: -5, c: 'Infinity', j: 'yes' }
+  });
+  assert.ok(Number.isFinite(remote.input.moveDir.x), 'input x was not finite');
+  assert.ok(Math.hypot(remote.input.moveDir.x, remote.input.moveDir.z) <= 1.0001,
+    'input vector was not clamped');
+  assert.strictEqual(remote.input.climbAxis, 0);
+  assert.strictEqual(remote.input.jump, false, 'truthy non-boolean jump was accepted');
+
+  /* Invalid tool events are ignored; the equipped tool stays as it was. */
+  hostSession.onMessage({ from: 'join', d: { k: 'tool', e: '1e999', b: 6 } });
+  assert.strictEqual(remote.toolBin, 6);
+  client.spawnFx({ t: 'e', p: ['1e999', 0, 0], r: 4 });
+  assert.strictEqual(client.fx.length, 0, 'non-finite FX position was accepted');
+
+  /* Avatar/profile and snapshot/remote caps. */
+  for (let i = 0; i < 48; i++) {
+    client.applyAvatarMessage({ id: 'profile' + i, c: { head: 24 }, t: null });
+  }
+  assert.ok(client.profiles.size <= 32, 'avatar profiles exceeded the cap');
+  client.applySnapshot({
+    p: Array.from({ length: 40 }, (_, i) => ({
+      i: 'extra' + i, p: [0, 3, 0], r: 0, v: [0, 0, 0], g: 1, h: 100, a: 1
+    }))
+  });
+  assert.ok(client.remotes.size <= 32, 'snapshot remotes exceeded the cap');
+
   /* Host-authoritative respawn: host local player, remote joiner, and the
    * joiner's own local body all come back after the 5 s timer. */
   hostChar.alive = false;
@@ -387,7 +426,7 @@ async function main() {
   window.RBLXenv = {
     state: { netMap: new Map(), world: {} },
     netDrain: () => ({ p: partMsg.p, d: partMsg.d, f: partMsg.f }),
-    createNetPart(p) { sent.push('new:' + p.i); this.state.netMap.set(p.i, { id:p.i }); },
+    createNetPart(p) { sent.push('new:' + p.i); const inst={ id:p.i }; this.state.netMap.set(p.i, inst); return inst; },
     applyNetPart(inst, p) { sent.push('upd:' + p.i); },
     detachFromWorld(inst) { sent.push('del:' + inst.id); }
   };
@@ -412,6 +451,20 @@ async function main() {
   assert.strictEqual(client2.fx.length, 1, 'laser line FX did not spawn');
   client2.stepFx(0.2);
   assert.strictEqual(client2.fx.length, 0, 'laser line FX did not expire');
+
+  /* New-part rate cap: a host cannot make the joiner allocate an
+   * unbounded number of meshes in one tick. */
+  const spam = Array.from({ length: 256 }, (_, i) => ({
+    i: 2000 + i, n: 1, c: 'Part', s: [1,1,1],
+    f: [0,0,0,1,0,0,0,1,0,0,0,1], a: 0, k: 1, h: 1
+  }));
+  const beforeNew = sent.filter(s => s.startsWith('new:')).length;
+  for (let n = 0; n < 5; n++) {
+    const batch = spam.map((p, i) => Object.assign({}, p, { i: 2000 + n * 256 + i }));
+    client2.applyParts({ p: batch, d: [], f: [] });
+  }
+  const afterNew = sent.filter(s => s.startsWith('new:')).length;
+  assert.ok(afterNew - beforeNew <= 1024, 'new-part rate cap was bypassed');
   client2.dispose();
 
   console.log('ALL NETGAME TESTS PASSED');

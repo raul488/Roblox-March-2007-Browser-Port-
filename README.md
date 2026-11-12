@@ -55,8 +55,15 @@ and sends snapshots through the relay. Joiners render remote avatars, chat,
 and predict their own movement; they do not run the place's server Scripts.
 Remote avatars carry the player's body colors and a small downscaled
 T-shirt. Chat is ASCII-only, capped at 100 characters, rate-limited and
-filtered with a starter profanity list. Usernames are capped at 20
-characters with ASCII letters/numbers, at most one space and one underscore.
+filtered with an expanded profanity/slur list that sees through spaces,
+punctuation, leetspeak, inserted digits and doubled letters. Usernames are
+capped at 20 characters with ASCII letters/numbers, at most one space and
+one underscore.
+
+The relay sees room names, display names, chat, avatars and game state; it
+does not receive player IP addresses. A T-shirt you choose is shared with
+the players in your room. A modified host can cheat its own room; the relay
+cannot verify the host's game filtering.
 
 Host changes replicate to joiners: tool-created and moving parts, grabbed
 bricks, beacon/regen geometry, explosions, and place-script Touched events
@@ -82,9 +89,17 @@ preservation. Imported `.rbxl`/`.rbxm` files run their embedded scripts on
 the built-in Lua layer, so only load files you trust.
 
 `web/index.html` sets a Content-Security-Policy that allows only local and
-embedded (`data:`/`blob:`) resources plus the configured relay. A
-`TextureId`/`SoundId` pointing at an outside URL is blocked, and there is no
-`HttpService`, so place scripts have no network access.
+embedded (`data:`/`blob:`) resources plus the configured relay. It does not
+allow inline scripts: page handlers are bound from `js/main.js`, and the
+JSON-LD block is allowed by hash. A `TextureId`/`SoundId` pointing at an
+outside URL is blocked, and there is no `HttpService`, so place scripts have
+no network access.
+
+The relay is public infrastructure, not authentication: anyone who can reach
+it can create a public room. Run it behind the tunnel with the loopback
+bind, tune `MAX_CONNECTIONS`/`MAX_ROOMS`/rate limits in its `.env`, and put
+per-IP/WAF rate limits on the tunnel as well. Never expose the Node port
+directly.
 
 ## Controls (2007 client)
 
