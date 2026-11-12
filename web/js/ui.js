@@ -205,6 +205,22 @@ class UI {
     }
   }
 
+  /* Player List rows for solo or a relay roster. Names are text-only. */
+  setPlayers(list){
+    const box=document.getElementById('playerList');
+    if (!box) return;
+    const old=box.querySelectorAll('.plrow');
+    for (const row of old) row.remove();
+    for (const p of (list||[])){
+      const row=document.createElement('div');
+      row.className='plrow';
+      row.textContent=String(p.name||'Player');
+      if (p.self) row.style.fontWeight='bold';
+      if (p.host) row.title='Host';
+      box.appendChild(row);
+    }
+  }
+
   /* HUD visibility for the join flow */
   showInGameHUD(){
     document.getElementById('menubar').style.display='flex';

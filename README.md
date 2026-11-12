@@ -49,9 +49,12 @@ When the page is served from `localhost` or `127.0.0.1`, an empty config
 defaults to `http://127.0.0.1:8788` so the private relay can be tested
 locally. Serve `web/` over HTTP (not `file://`) for local multiplayer.
 
-The current build wires the mode chooser, server browser and room handshake.
-Gameplay state replication, server scripts and tools across clients are the
-next stage.
+The current build enters the place as Host & Play: the host's browser
+runs the authoritative world, simulates every joined player's character,
+and sends snapshots through the relay. Joiners render remote avatars, chat,
+and predict their own movement; they do not run the place's server Scripts.
+Tools, dynamic parts and place-script interactions across clients are the
+next stage. Hosting without playing (dedicated/headless) is also next.
 
 ## Content and trust
 

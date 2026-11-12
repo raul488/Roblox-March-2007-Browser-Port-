@@ -86,6 +86,7 @@ class Character {
     this.toolEquipped=false;
     this.climbing=false;              // physics sets this on a ladder/truss
     this.animateLua=false;            // true once the shipped Animate script runs
+    this.remote=false;                // replicated avatar: no local input/sounds/events
     this.walkSpeed=16;                // classic humanoid
     this.jumpVelocity=50;
     this.velocity=new THREE.Vector3(0,0,0);    // set by physics each step
@@ -193,7 +194,7 @@ class Character {
       else if (name==='Left Leg')  this.joints['Left Hip']=pivot;
     }
     this._addNameTag();
-    this._ensureCoreSounds();
+    if (!this.remote) this._ensureCoreSounds();
     this.rigReady=true;
     return this;
   }
@@ -479,7 +480,7 @@ class Character {
     this.climbing=false;
     if (this.sndRun) this.sndRun.pause();
     this._fallSfxArmed=false;                 /* no swoosh for the corpse */
-    window.Sounds.sound('uuhhh.wav', {volume:1});              // humanoidSound: Died → sDied
+    if (!this.remote) window.Sounds.sound('uuhhh.wav', {volume:1});  // humanoidSound: Died → sDied
     if (this.nameTag) this.nameTag.visible=false;
     if (this.onDeath) this.onDeath();
   }
@@ -514,11 +515,13 @@ class Character {
     if (pose!==this.pose){
       const prev=this.pose;
       this.pose=pose;
-      this._poseSFX(pose, prev);
-      /* Climbing's speed arg is the climb rate (the engine's Humanoid
-       * Climbing event carries speed; horizontal speed is 0 while on a
-       * ladder because the body is snapped to the face) */
-      this._fireHumanoidEvent(pose, this.climbing? Math.abs(v.y) : speed);
+      if (!this.remote) {
+        this._poseSFX(pose, prev);
+        /* Climbing's speed arg is the climb rate (the engine's Humanoid
+         * Climbing event carries speed; horizontal speed is 0 while on a
+         * ladder because the body is snapped to the face) */
+        this._fireHumanoidEvent(pose, this.climbing? Math.abs(v.y) : speed);
+      }
     }
     /* humanoidSound loops/one-shots, driven per frame with hysteresis  the pose can
      * flap Running↔FreeFall between collision frames on slopes/stairs, and
@@ -528,7 +531,7 @@ class Character {
      * must never (re)drive sound. */
     this.gT=this.onGround? (this.gT||0)+dt : 0;
     this.aT=this.onGround? 0 : (this.aT||0)+dt;
-    if (this.sndRun){
+    if (!this.remote && this.sndRun){
       if (this.alive && this.onGround && this.gT>0.08 && speed>0.8) this.sndRun.play();
       else this.sndRun.pause();
     }
@@ -538,7 +541,7 @@ class Character {
      * implicit: one-shots finish on their own, and death never fires) */
     if (this.onGround){
       this._fallSfxArmed=true;
-    } else if (this.alive && !this.climbing && this._fallSfxArmed && this.aT>0.12 && v.y<-7){
+    } else if (!this.remote && this.alive && !this.climbing && this._fallSfxArmed && this.aT>0.12 && v.y<-7){
       this._fallSfxArmed=false;
       window.Sounds.sound('swoosh.wav', {volume:0.35});
     }
@@ -559,11 +562,12 @@ class Character {
     this.joints['Right Hip']      && (this.joints['Right Hip'].rotation.x      =  this._chase(this.Motors['Right Hip'],      dt));
     this.joints['Left Hip']       && (this.joints['Left Hip'].rotation.x       = -this._chase(this.Motors['Left Hip'],       dt));
     /* humanoidHealth: +1%/s while alive (loop body ported) */
-    this._regen(dt);
+    if (!this.remote) this._regen(dt);
     this._tagRedraw();
   }
 
   _fireHumanoidEvent(pose, speed){
+    if (this.remote) return;
     const E=window.RBLXenv;
     if (!E||!E.fireHumanoidEvent) return;
     switch (pose){
@@ -582,6 +586,7 @@ class Character {
   }
 
   _poseSFX(pose, prev){
+    if (this.remote) return;
     /* humanoidSound one-shots only here  the looped sounds (sRunning,
      * sFreeFalling) are driven per frame in step() with hysteresis, and
      * the Jumping "button.wav" fires from the jump event (onJumped),
@@ -592,6 +597,7 @@ class Character {
   }
 
   _ensureCoreSounds(){
+    if (this.remote) return;
     /* shipped humanoidSound.rbxm: ONLY sRunning is Looped=true  every
      * other sound (sDied/sFallingDown/sFreeFalling/sGettingUp/sJumping)
      * is a plain one-shot fired on its Humanoid event edge. The old port
@@ -640,6 +646,7 @@ class Character {
   }
 
   _regen(dt){
+    if (this.remote) return;
     /* humanoidHealth: while true do local s=wait(1) ...  accumulate to 1s */
     if (!this.alive || this.health<=0) return;
     if (this.health>=this.maxHealth) return;

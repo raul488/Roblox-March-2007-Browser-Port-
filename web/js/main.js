@@ -37,7 +37,7 @@ const perf=window.__perf={
   get world(){ return world; }, get scene(){ return scene; }, get renderer(){ return renderer; }
 };
 
-let renderer, scene, camera, world=null, character=null, controller=null, tools=null, sjobs=null;
+let renderer, scene, camera, world=null, character=null, controller=null, tools=null, sjobs=null, netgame=null;
 let clock=new THREE.Clock();
 let loginEl=null;                 /* cached start-page overlay (loop idles on it) */
 let canRender=true;               /* false while unfocused/hidden (skip the GPU) */
@@ -202,11 +202,18 @@ function ensurePlaceScript(name){
   });
 }
 
-async function joinPlace(name, providedText){
+async function joinPlace(name, providedText, netOpts){
   if (!window.__webglAvailable){
     showWebGLWarning();
     return;
   }
+  const netMode = netOpts && (netOpts.mode === 'host' || netOpts.mode === 'client')
+    ? netOpts.mode : null;
+  if (netgame) {
+    try { netgame.dispose(); } catch (_) { /* already gone */ }
+    netgame = null;
+  }
+  if (window.RBLXnetgame) window.RBLXnetgame.active = null;
   document.getElementById('login').style.display='none';
   document.getElementById('loadingBar').style.display='flex';
   ui.notify('Joining game... (from '+(providedText!=null?'file':'bundled place')+')');
@@ -261,37 +268,57 @@ async function joinPlace(name, providedText){
     ui.setTools(toolList);
 
     ui.onSelectTool=(i, t)=>{
+      if (!tools) return;
       if (!t){ tools.unequip(); return; }
       tools.equip(t.inst, character);
       ui.chat('Equipped: '+t.name, null, '#ffff00');   // tips = yellow (class 6 switch, decomp FUN_005b8060)
     };
 
-    await spawn(parsed);
+    await spawn(parsed, netMode);
 
-    sjobs=new window.RBLXscript.PlaceScriptRunner(world, ui, character);
-    sjobs.init(parsed);
-    /* PlaySolo creates the local Player first, then runs the place scripts;
-     * the engine's scripts are already running when the player enters, so
-     * `game.Players.ChildAdded` fires for it.  Replay that ordering here:
-     * launch the script bodies, fire the join event, then let the handlers
-     * (Haunted / Rocket Car Rally spawn scripts) place the character before
-     * the first frame is shown. */
-    if (window.RBLXenv&&window.RBLXenv.firePlayerAdded){
-      window.RBLXenv.tickScripts(0);
-      window.RBLXenv.firePlayerAdded();
-      window.RBLXenv.tickScripts(0);
+    if (netMode !== 'client') {
+      sjobs=new window.RBLXscript.PlaceScriptRunner(world, ui, character);
+      sjobs.init(parsed);
+      /* PlaySolo creates the local Player first, then runs the place scripts;
+       * the engine's scripts are already running when the player enters, so
+       * `game.Players.ChildAdded` fires for it.  Replay that ordering here:
+       * launch the script bodies, fire the join event, then let the handlers
+       * (Haunted / Rocket Car Rally spawn scripts) place the character before
+       * the first frame is shown. */
+      if (window.RBLXenv&&window.RBLXenv.firePlayerAdded){
+        window.RBLXenv.tickScripts(0);
+        window.RBLXenv.firePlayerAdded();
+        window.RBLXenv.tickScripts(0);
+      }
+    } else {
+      sjobs=null;
+    }
+
+    if (netMode && window.RBLXnetgame) {
+      netgame=new window.RBLXnetgame.NetGame({
+        mode:netMode,
+        session:netOpts.session,
+        scene, world, ui, character, controller, parsed
+      });
+      window.RBLXnetgame.active=netgame;
+      netgame.start();
     }
 
     document.getElementById('loadingBar').style.display='none';
     ui.showInGameHUD();
+    if (netMode === 'client' && ui.$hotbar) ui.$hotbar.style.display='none';
     /* high-part-count places can stutter on older hardware; the banner
      * carries the actual Workspace part total (threshold in ui.js) */
     ui.warnIfHighPartCount(stats.parts);
     if (window.RBLXsafechat) window.RBLXsafechat.mount();
-    ui.chat('WASD move · Space jump · right-drag camera · wheel zoom · / chat · 1-0 tools', null, '#ffff00');
+    ui.chat('WASD move · Space jump · right-drag camera · wheel zoom · / chat' +
+      (netMode === 'client' ? ' · peer-hosted room' : ' · 1-0 tools'), null, '#ffff00');
   } catch (err){
     console.error(err);
     ui.notify('Join failed: '+(err.message||err));
+    if (netOpts && netOpts.session && netOpts.session.close){
+      try { netOpts.session.close(); } catch (_) { /* already closed */ }
+    }
     document.getElementById('login').style.display='block';
     document.getElementById('login').scrollTop=0;     // the site opens at the very top
     document.getElementById('loadingBar').style.display='none';
@@ -299,7 +326,7 @@ async function joinPlace(name, providedText){
 }
 
 /* --------------------------- PlaySolo.lua flow --------------------------- */
-async function spawn(parsed){
+async function spawn(parsed, netMode){
   if (character){ scene.remove(character.group); character=null; }
   const name=(window.RBLXplayer&&window.RBLXplayer.name)||'Player1';
   character=new window.RBLXcharacter.Character(scene, world, name);
@@ -308,8 +335,7 @@ async function spawn(parsed){
   await character.load();
   /* start-page body colors (startpage.js)  recolor on every LoadCharacter */
   character.applyBodyColors(window.RBLXplayer&&window.RBLXplayer.colors);
-  const plrow=document.querySelector('#playerList .plrow');
-  if (plrow) plrow.textContent=name;
+  if (ui.setPlayers) ui.setPlayers([{name:name, self:true}]);
   ui.health(1);
   /* LoadCharacter spawn selection  RBX::SpawnerService (decomp
    * FUN_005a06d0): a uniformly random SpawnLocation from the registry;
@@ -335,12 +361,14 @@ async function spawn(parsed){
   /* humanoidSound: the Jumping event plays button.wav (one per jump req) */
   character.onJumped=()=>window.Sounds.sound('button.wav', {volume:0.4});
   character.onDeath=()=>{
-    ui.notify('You died.');
-    if (sjobs) sjobs.registerWipeout();
-    setTimeout(spawnAll, 5000);      // PlaySolo: Died:connect → wait(5) → LoadCharacter
+    ui.notify('You died.' + (netMode ? ' Leave and rejoin to respawn.' : ''));
+    if (!netMode) {
+      if (sjobs) sjobs.registerWipeout();
+      setTimeout(spawnAll, 5000);      // PlaySolo: Died:connect → wait(5) → LoadCharacter
+    }
   };
   controller=new window.RBLXphysics.Humanoid(character, world);
-  if (window.RBLXdyn){
+  if (netMode !== 'client' && window.RBLXdyn){
     /* assembly physics picks up where the load-weld left off; the
      * character rides moving assemblies (beacon pads) */
     if (!window.RBLXdyn._ready || window.RBLXdyn.world!==world)
@@ -350,11 +378,16 @@ async function spawn(parsed){
     if (world.refreshControllerFlags) world.refreshControllerFlags();
     window.RBLXdyn.setCharacter(character);
   }
-  tools=new window.RBLXtools.ToolManager(scene, world, camera);
-  tools.setCharacter(character);
+  if (netMode === 'client') {
+    tools=null;
+  } else {
+    tools=new window.RBLXtools.ToolManager(scene, world, camera);
+    tools.setCharacter(character);
+  }
 }
 function spawnAll(){
   if (!world) return;
+  if (window.RBLXnetgame) window.RBLXnetgame.active = null;
   if (tools && tools.unequip) tools.unequip();   // drop tool selection from the old rig
   tools=null;
   if (ui.clearToolSelection) ui.clearToolSelection();
@@ -441,7 +474,10 @@ function bindInput(canvas){
   ui.$chatInput.addEventListener('keydown', e=>{
     if (e.key==='Enter'){
       const t=ui.$chatInput.value.trim();
-      if (t){ ui.chat(t, (window.RBLXplayer&&window.RBLXplayer.name)||'Player1'); }   // name color auto from the mined classic palette
+      if (t){
+        if (netgame && netgame.chat) netgame.chat(t);
+        else ui.chat(t, (window.RBLXplayer&&window.RBLXplayer.name)||'Player1');   // name color auto from the mined classic palette
+      }
       ui.$chatInput.value='';
       ui.hideChatInput();
       window.Sounds.sound('clickfast.wav', {volume:0.4});
@@ -542,6 +578,10 @@ function step(dt){
     tools.update(dt, mouse, character);
   }
   t2=performance.now(); perf.toolsMs+=t2-t; t=t2;
+  if (netgame){
+    netgame.step(dt, input, character, controller);
+  }
+  t2=performance.now(); perf.toolsMs+=t2-t; t=t2;
   /* leftPressed is a per-tick edge (like Input.IsPressed): consume it each
    * step so a single click can't leak into later tool equips (the "gears
    * auto-fire on equip" bug) */
@@ -602,5 +642,11 @@ function render(dt){
 }
 
 window.addEventListener('load', boot);
+/* The relay lobby calls this after welcome. Host & Play enters the world;
+ * a joiner loads the same static place and receives host snapshots. */
+window.RBLXstartNetworkGame = async function (payload) {
+  if (!payload || !payload.session) return;
+  await joinPlace(payload.session.place, null, payload);
+};
 window.__leaveGame=()=>{ location.reload(); };
 })();

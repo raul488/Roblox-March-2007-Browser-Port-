@@ -81,6 +81,8 @@ function imageFor(state){
 /* a picked phrase sends through the same ui.chat path as typed text
  * (main.js's Enter handler)  name colour cycles the classic palette */
 function sendPhrase(phrase){
+  const game=window.RBLXnetgame&&window.RBLXnetgame.active;
+  if (game&&game.chat){ game.chat(phrase); return; }
   const ui=window.RBLXui_instance_open;
   if (ui&&ui.chat) ui.chat(phrase, (window.RBLXplayer&&window.RBLXplayer.name)||'Player1');
 }

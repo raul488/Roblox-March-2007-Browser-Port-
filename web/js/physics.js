@@ -10,9 +10,10 @@
 "use strict";
 
 class Humanoid {
-  constructor(character, world){
+  constructor(character, world, opts){
     this.c=character;
     this.world=world;
+    this.remote=!!(opts&&opts.remote);   // replicated avatar: no local carry/events/pushes
     this.onGround=false;
     this.stepHeight=2.3;       // easy walk-up over 2-stud borders like the classic rig
     this.walkSpeed=16;
@@ -225,7 +226,7 @@ class Humanoid {
     this.climbSpeed=this.walkSpeed*0.7;
     /* rides: dynamic assemblies (beacon pads, debris stacks) translate the
      * character standing on them before its own gravity acts */
-    if (window.RBLXdyn){
+    if (!this.remote && window.RBLXdyn){
       const cd=window.RBLXdyn.takeCarry();
       if (cd){
         const p0=c.group.position;
@@ -276,7 +277,7 @@ class Humanoid {
       /* Humanoid.Jumping(true) is the jump-input edge (classic event feeds
        * the JetPack toggle and the humanoidSound jump sound).  It must fire
        * even mid-air so a second press can toggle a jetpack off. */
-      if (window.RBLXenv&&window.RBLXenv.fireHumanoidEvent)
+      if (!this.remote && window.RBLXenv&&window.RBLXenv.fireHumanoidEvent)
         window.RBLXenv.fireHumanoidEvent('Jumping', [true]);
       if (this.onGround){
         this.jumping=true;
@@ -346,7 +347,7 @@ class Humanoid {
         this.onGround=true;
         /* close the boolean jump state: humanoidSound pauses the jump
          * sound and a JetPack turns off when the character lands */
-        if (wasAir && window.RBLXenv&&window.RBLXenv.fireHumanoidEvent)
+        if (wasAir && !this.remote && window.RBLXenv&&window.RBLXenv.fireHumanoidEvent)
           window.RBLXenv.fireHumanoidEvent('Jumping', [false]);
       } else {
         const gp=this._groundProbe();
@@ -356,7 +357,7 @@ class Humanoid {
     }
     /* dynamic geometry that moved into the idle body between physics
      * steps: push the character out (car/prop hits the player) */
-    this._pushOutDynamic();
+    if (!this.remote) this._pushOutDynamic();
     /* mirror the ground collider onto the character  dynamics.js reads
      * c.groundLook to detect rides (beacon pads / moving assemblies) */
     this.c.groundLook = this.groundLook;
@@ -410,6 +411,7 @@ class Humanoid {
    * heavy wall), but a light brick receives the momentum-shared velocity
    * and wakes instead of behaving like an immovable collider. */
   _pushDynamic(o, axis, speed, dir){
+    if (this.remote) return false;
     const D=window.RBLXdyn;
     if (!D||!D.asmMap) return false;
     const a=D.asmMap.get(o);
@@ -524,7 +526,7 @@ class Humanoid {
     /* Space = push off the ladder */
     if (input && input.jump && !this.jumpLatch){
       this.jumpLatch=true;
-      if (window.RBLXenv&&window.RBLXenv.fireHumanoidEvent)
+      if (!this.remote && window.RBLXenv&&window.RBLXenv.fireHumanoidEvent)
         window.RBLXenv.fireHumanoidEvent('Jumping', [true]);
       this._exitClimb();
       v.x=this.climbN.x*8; v.z=this.climbN.z*8; v.y=this.jumpPower;

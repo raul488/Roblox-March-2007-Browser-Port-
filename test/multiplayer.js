@@ -64,6 +64,7 @@ class FakeWebSocket {
   constructor(url) {
     this.url = url;
     this.readyState = 0;
+    this.sent = [];
     this.onopen = null;
     this.onmessage = null;
     this.onerror = null;
@@ -76,6 +77,9 @@ class FakeWebSocket {
   }
   message(obj) {
     if (this.onmessage) this.onmessage({ data: JSON.stringify(obj) });
+  }
+  send(text) {
+    this.sent.push(JSON.parse(text));
   }
   close() {
     this.readyState = 3;
@@ -207,6 +211,94 @@ async function main() {
   assert.match(E('modeHint').textContent, /not configured/);
   assert.strictEqual(E('modeSolo').disabled, false);
   E('modeCancel').onclick();
+
+  /* The game hook receives the live session and can send/receive frames. */
+  window.RBLX_NET_CONFIG.relay = 'http://127.0.0.1:8788';
+  fetchImpl = async () => ({
+    ok: true,
+    json: async () => ({
+      v: 1,
+      rooms: [{
+        id: 'room1234567890abcdefgh',
+        place: 'Crossroads',
+        hostName: 'Alice',
+        players: 1,
+        max: 16
+      }]
+    })
+  });
+  let started = null;
+  window.RBLXstartNetworkGame = payload => { started = payload; };
+
+  mp.chooseMode('Crossroads', () => {});
+  E('modePlay').onclick();
+  await tick();
+  await tick();
+  E('sbHost').onclick();
+  const gameWs = FakeWebSocket.instances[FakeWebSocket.instances.length - 1];
+  gameWs.open();
+  gameWs.message({
+    t: 'welcome', v: 1, room: 'gameroom1234567890abcd', place: 'Crossroads',
+    self: 'host1', host: 'host1', max: 16,
+    players: [{ id: 'host1', name: 'Tester', host: true }]
+  });
+  assert.ok(started, 'game hook was not called');
+  assert.strictEqual(started.mode, 'host');
+  assert.strictEqual(started.session.room, 'gameroom1234567890abcd');
+  assert.strictEqual(started.session.self, 'host1');
+  assert.strictEqual(E('roomLobby').style.display, 'none');
+  assert.strictEqual(E('serverBrowser').style.display, 'none');
+  assert.strictEqual(E('modePicker').style.display, 'none');
+
+  let roster = null;
+  let gameMessage = null;
+  started.session.onRoster = list => { roster = list; };
+  started.session.onMessage = msg => { gameMessage = msg; };
+  started.session.send({ k: 's', p: [] });
+  assert.deepStrictEqual(gameWs.sent.at(-1), { t: 'state', to: 'all', d: { k: 's', p: [] } });
+
+  gameWs.message({
+    t: 'roster',
+    players: [
+      { id: 'host1', name: 'Tester', host: true },
+      { id: 'join1', name: 'Bob', host: false }
+    ]
+  });
+  assert.strictEqual(roster.length, 2);
+  gameWs.message({ t: 'cmd', from: 'join1', d: { k: 'i', x: 1 } });
+  assert.deepStrictEqual(gameMessage, { from: 'join1', d: { k: 'i', x: 1 } });
+
+  started.session.close();
+  assert.strictEqual(gameWs.readyState, 3);
+
+  /* Join maps to the client role and sends commands, not host state. */
+  started = null;
+  mp.chooseMode('Crossroads', () => {});
+  E('modePlay').onclick();
+  await tick();
+  await tick();
+  const joinRow = E('sbList').children[0];
+  joinRow.children[1].onclick();
+  const clientWs = FakeWebSocket.instances[FakeWebSocket.instances.length - 1];
+  clientWs.open();
+  clientWs.message({
+    t: 'welcome', v: 1, room: 'gameroom1234567890abcd', place: 'Crossroads',
+    self: 'join1', host: 'host1', max: 16,
+    players: [
+      { id: 'host1', name: 'Tester', host: true },
+      { id: 'join1', name: 'Bob', host: false }
+    ]
+  });
+  assert.ok(started, 'join game hook was not called');
+  assert.strictEqual(started.mode, 'client');
+  started.session.send({ k: 'i', x: 1 });
+  assert.deepStrictEqual(clientWs.sent.at(-1), { t: 'cmd', d: { k: 'i', x: 1 } });
+
+  let joinMessage = null;
+  started.session.onMessage = msg => { joinMessage = msg; };
+  clientWs.message({ t: 'state', d: { k: 's', p: [] } });
+  assert.strictEqual(joinMessage.from, 'host1');
+  started.session.close();
 
   global.setInterval = realSetInterval;
   global.clearInterval = realClearInterval;

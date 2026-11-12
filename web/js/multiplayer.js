@@ -298,7 +298,14 @@
       if (state.ws === ws) state.ws = null;
       if (els.sbHost) els.sbHost.disabled = false;
       if (state.session) {
-        if (!state.leaving) setStatus(els.lobbyStatus, 'Disconnected from the relay.');
+        if (!state.leaving) {
+          if (typeof state.session.onClose === 'function') {
+            state.leaving = true;
+            state.session.onClose('close');
+          } else {
+            setStatus(els.lobbyStatus, 'Disconnected from the relay.');
+          }
+        }
       } else if (state.browsing) {
         setStatus(els.sbStatus, 'The relay closed the connection. Play Solo still works.');
       }
@@ -318,10 +325,60 @@
         self: String(message.self || ''),
         host: String(message.host || ''),
         max: Math.max(2, Math.min(16, Number(message.max) || 16)),
-        players: cleanPlayers(message.players)
+        players: cleanPlayers(message.players),
+        onMessage: null,
+        onRoster: null,
+        onClose: null
       };
+      state.session.send = function (data) {
+        if (!state.ws || state.ws.readyState !== 1) return false;
+        try {
+          if (state.mode === 'host') {
+            state.ws.send(JSON.stringify({ t: 'state', to: 'all', d: data }));
+          } else {
+            state.ws.send(JSON.stringify({ t: 'cmd', d: data }));
+          }
+          return true;
+        } catch (_) {
+          return false;
+        }
+      };
+      state.session.sendTo = function (to, data) {
+        if (state.mode !== 'host' || !state.ws || state.ws.readyState !== 1) return false;
+        try {
+          state.ws.send(JSON.stringify({
+            t: 'state',
+            to: Array.isArray(to) ? to : [to],
+            d: data
+          }));
+          return true;
+        } catch (_) {
+          return false;
+        }
+      };
+      state.session.close = function () { leaveRoom(); };
+
       state.browsing = false;
       stopPoll();
+
+      if (typeof window.RBLXstartNetworkGame === 'function') {
+        hideAll();
+        try {
+          var started = window.RBLXstartNetworkGame({
+            mode: state.mode === 'host' ? 'host' : 'client',
+            session: state.session
+          });
+          if (started && typeof started.catch === 'function') {
+            started.catch(function (err) {
+              console.error('[multiplayer] game start failed:', err);
+            });
+          }
+        } catch (err) {
+          console.error('[multiplayer] game start failed:', err);
+        }
+        return;
+      }
+
       show(els.modePicker, false);
       show(els.serverBrowser, false);
       show(els.roomLobby, true);
@@ -335,7 +392,10 @@
     if (message.t === 'roster') {
       if (!state.session) return;
       state.session.players = cleanPlayers(message.players);
-      renderLobby();
+      if (typeof state.session.onRoster === 'function') {
+        state.session.onRoster(state.session.players);
+      }
+      if (els.roomLobby && els.roomLobby.style.display !== 'none') renderLobby();
       return;
     }
 
@@ -350,13 +410,28 @@
     if (message.t === 'hostLeft') {
       if (state.session) {
         state.leaving = true;
+        if (typeof state.session.onClose === 'function') state.session.onClose('hostLeft');
         setStatus(els.lobbyStatus, 'Host left. This room is closed.');
       }
       closeSocket();
       return;
     }
 
-    /* state/cmd/pong belong to the gameplay layer. */
+    if (message.t === 'cmd') {
+      if (state.session && typeof state.session.onMessage === 'function') {
+        state.session.onMessage({ from: message.from, d: message.d });
+      }
+      return;
+    }
+
+    if (message.t === 'state') {
+      if (state.session && typeof state.session.onMessage === 'function') {
+        state.session.onMessage({ from: state.session.host, d: message.d });
+      }
+      return;
+    }
+
+    /* pong and future relay messages are ignored by this layer. */
   }
 
   function renderLobby() {
