@@ -44,14 +44,17 @@
 
   function clientName() {
     var name = (window.RBLXplayer && window.RBLXplayer.name) || 'Player1';
-    if (window.RBLXnamepolicy) name = window.RBLXnamepolicy.sanitize(name);
+    if (window.RBLXnamepolicy) name = window.RBLXnamepolicy.clean(name);
     return name;
   }
 
   function cleanPlayer(p) {
     if (!p || typeof p !== 'object') return null;
     if (typeof p.id !== 'string' || typeof p.name !== 'string') return null;
-    return { id: p.id, name: p.name.slice(0, 40), host: p.host === true };
+    var name = window.RBLXnamepolicy
+      ? window.RBLXnamepolicy.clean(p.name, 'Player')
+      : p.name.slice(0, 40);
+    return { id: p.id, name: name, host: p.host === true };
   }
 
   function cleanPlayers(list) {
@@ -203,7 +206,9 @@
       var info = document.createElement('div');
       info.className = 'sbInfo';
       var name = document.createElement('b');
-      name.textContent = String(room.hostName || 'Host');
+      name.textContent = window.RBLXnamepolicy
+        ? window.RBLXnamepolicy.clean(room.hostName, 'Host')
+        : String(room.hostName || 'Host');
       var meta = document.createElement('span');
       meta.textContent = players + '/' + max + ' players';
       info.appendChild(name);

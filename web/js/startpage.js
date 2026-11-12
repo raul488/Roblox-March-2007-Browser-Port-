@@ -42,7 +42,7 @@ if (loginEl) loginEl.scrollTop=0;
 var nameInput=document.getElementById('userName');
 if (nameInput){
   if (window.RBLXnamepolicy){
-    window.RBLXplayer.name=window.RBLXnamepolicy.sanitize(window.RBLXplayer.name);
+    window.RBLXplayer.name=window.RBLXnamepolicy.clean(window.RBLXplayer.name);
     save();
   }
   nameInput.value=window.RBLXplayer.name;
@@ -60,6 +60,15 @@ if (nameInput){
     if (!nameInput.value){
       nameInput.value='Player1';
       window.RBLXplayer.name='Player1';
+      save();
+      return;
+    }
+    var safe=window.RBLXnamepolicy
+      ? window.RBLXnamepolicy.clean(window.RBLXplayer.name)
+      : window.RBLXplayer.name;
+    if (safe!==window.RBLXplayer.name){
+      nameInput.value=safe;
+      window.RBLXplayer.name=safe;
       save();
     }
   });

@@ -62,6 +62,9 @@ disabled and only phrases from the shipped Super Safe Chat tree can be
 sent or displayed (received text is validated against that exact phrase
 list). The setting persists locally. Obvious slurs are not merely masked:
 the sender is muted for a minute and the centre message box says **Stop**.
+Usernames go through the same filter at commit time (a filtered name falls
+back to `Player1`), while live typing only strips illegal characters so
+words like `assassin` can still be entered.
 Usernames are capped at 20 characters
 with ASCII letters/numbers, at most one space and one underscore.
 

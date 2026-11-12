@@ -392,7 +392,7 @@ async function joinPlace(name, providedText, netOpts){
 async function spawn(parsed, netMode){
   if (character){ scene.remove(character.group); character=null; }
   let name=(window.RBLXplayer&&window.RBLXplayer.name)||'Player1';
-  if (window.RBLXnamepolicy) name=window.RBLXnamepolicy.sanitize(name);
+  if (window.RBLXnamepolicy) name=window.RBLXnamepolicy.clean(name);
   character=new window.RBLXcharacter.Character(scene, world, name);
   world.character=character;
   firstPerson=false;      /* a respawn after a first-person death must re-hide the rig */
