@@ -36,6 +36,13 @@ assert.ok(/base-uri 'none'/.test(csp), 'base-uri is not locked down');
 assert.ok(/form-action 'none'/.test(csp), 'form-action is not locked down');
 assert.ok(/frame-src 'none'/.test(csp), 'frame-src is not locked down');
 
+/* The generated safe-collision list must load before the filter, and the
+ * per-player Safe Chat control must exist. */
+assert.ok(webIndex.indexOf('js/safewords.js') >= 0, 'safewords.js is not loaded');
+assert.ok(webIndex.indexOf('js/safewords.js') < webIndex.indexOf('js/chatfilter.js'),
+  'safewords.js must load before chatfilter.js');
+assert.ok(/id="safeOnlyBtn"/.test(webIndex), 'Safe Chat toggle missing');
+
 /* The only inline script left is the JSON-LD block; its hash must match. */
 const ld=/<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(webIndex);
 assert.ok(ld, 'JSON-LD block missing');

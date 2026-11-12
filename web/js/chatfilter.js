@@ -32,33 +32,36 @@
   var WORDS = new Set(`
     fuck fucks fucked fucker fuckers fucking fuckin fuk fukin fuking fuked fuker fukers
     fck fcks fcked fcker fckers fcking fcuk fcuking phuck phucks phucked phucker phuckers phucking
-    fk fks fked fker fkers fking fkface fkyou fkoff fkup
+    fk fks fked fker fkers fking fkface fkyou fkoff fkup fkn fkr fkrs
+    fukn fukr fukrs fckn fckr fckrs fuckn fuckr fuckrs
     fvck fvcks fvcked fvcker fvckers fvcking fack facks facked facker fackers facking
+    fawk fawks fawked fawker fawkers fawking
     fux fuxk fuxked fuxker fuxking fook fooking fooked fooker fookers feck fecking fecked fecker
-    fuckface fuckfaces fuckhead fuckheads fuckwit fuckwits fucktard fucktards fuckup fuckups
+    fuckface fuckfaces fuckhead fuckheads fuckwit fuckwits fucktard fucktards fuckup fuckups fuckings
     fuckboy fuckboys fuckboi fuckbois fucknut fucknuts fucknugget fucknuggets fuckstick fucksticks
     fucktoy fucktoys fuckyou fuckoff fuckall fuckery fuckeries fuckable fuckwad fuckwads
     fuckfest fuckfests fuckmachine unfuck unfucked unfucking motherfuck motherfucks motherfucked
     motherfucker motherfuckers motherfucking clusterfuck clusterfucks
-    shit shits shitty shitting shithead shitheads shitface shitstain shitstains shitbag shitbags
-    sht shts shty shting shthead shtheads shtface shtstain shtbag shtbags
+    shit shits shitty shitting shitted shithead shitheads shitface shitstain shitstains shitbag shitbags
+    sht shts shty shting shthead shtheads shtface shtstain shtbag shtbags shtz
+    shite shites shitey
     shitshow shitshows shitstorm shitstorms shitlord shitlords dipshit dipshits bullshit bullshits
     bullshitting horseshit horseshits
-    bitch bitches bitching bitchy bitchass bitchface sonofabitch sonofabitches
-    btch btchs btching btchy btchass btchface sonofabtch bch bchs
+    bitch bitches bitching bitchy bitched bitchass bitchface sonofabitch sonofabitches
+    btch btchs btching btchy btchass btchface sonofabtch bch bchs btchz
     asshole assholes asshat asshats asswipe asswipes assclown assclowns asskisser asskissers
     asslicker asslickers assbag assbags assface assfaces dumbass dumbasses jackass jackasses
     smartass smartasses fatass fatasses badass badasses ahole aholes
-    cunt cunts cunty cuntface cuntfaced cnt cnts cnty cntface
+    cunt cunts cunty cuntface cuntfaced cnt cnts cnty cntface cntz cunted cunting
     dick dicks dickhead dickheads dickwad dickwads dickface dickfaces dickhole dickholes
-    dck dcks dckhead dckheads dckwad dckwads dckface dckhole
+    dck dcks dckhead dckheads dckwad dckwads dckface dckhole dckz dicked dicking
     cock cocks cocksucker cocksuckers cockhead cockheads cockface cockfaces
-    cck ccks ccksucker ccksuckers
-    pussy pussies pussyface pssy pssies
-    whore whores whoring whorehouse whorehouses whre whres
-    slut sluts slutty sluttier sluttish slt slts slty
-    bastard bastards bastardize bastardized
-    douche douches douchebag douchebags douchey
+    cck ccks ccksucker ccksuckers cocked cocking
+    pussy pussies pussyface pssy pssies pssyz pussied pussying
+    whore whores whoring whorehouse whorehouses whre whres whored
+    slut sluts slutty sluttier sluttish slt slts slty slutted slutting
+    bastard bastards bastardize bastardized bastardly
+    douche douches douchebag douchebags douchey douching
     prick pricks prickface
     twat twats twatty
     wank wanks wanked wanker wankers wanking
@@ -74,16 +77,16 @@
     hoe hoes
     bimbo bimbos
     incel incels
-    cuck cucks cuckold cuckolds
+    cuck cucks cuckold cuckolds cuckolding
     libtard libtards feminazi feminazis
     scumbag scumbags
-    spastic spastics spaz spazz
-    retard retards retarded retardation retardate retardates
-    moron morons moronic imbecile imbeciles imbecilic idiot idiots idiotic
-    nazi nazis nazism nzi nzis hitler hitlers htler swastika swastikas
+    spastic spastics spaz spazz spazzy
+    retard retards retarded retardation retardate retardates retarding
+    moron morons moronic moronism imbecile imbeciles imbecilic imbecility idiot idiots idiotic idiotically
+    nazi nazis nazism nzi nzis nazify nazifies nazified nazifying nazification hitler hitlers htler hitlerian swastika swastikas
     kkk kukluxklan heilhitler siegheil whitepower whitepride racewar racewars
-    fag fags fagot fagots faggot faggots faggotry fggot fggots
-    dyke dykes tranny trannies shemale shemales homo homos
+    fag fags fagz fagot fagots faggot faggots faggotry fggot fggots fagged fagging faggy faggoty faggoting
+    dyke dykes dykey tranny trannies trannie shemale shemales homo homos
     nigger niggers nigga niggas nignog nignogs negro negros ngger nggers ngga nggas
     coon coons spic spics spick spicks chink chinks chnk chnks gook gooks kike kikes kke kkes
     paki pakis raghead ragheads towelhead towelheads wetback wetbacks beaner beaners
@@ -94,21 +97,21 @@
     tits titties titty boob boobs boobies nipple nipples
     cum cums cumming cumshot cumshots jizz jizzes semen
     blowjob blowjobs handjob handjobs rimjob rimjobs footjob footjobs
-    dildo dildos vibrator vibrators
+    dildo dildos dildoes vibrator vibrators
     orgasm orgasms orgasmic orgy orgies
-    masturbate masturbates masturbating masturbation
-    ejaculate ejaculates ejaculation
+    masturbate masturbates masturbating masturbation masturbated
+    ejaculate ejaculates ejaculation ejaculated ejaculating ejaculations
     creampie creampies
     hentai
     loli lolicon shotacon
-    pedo pedos pedophile pedophiles pedophilia paedo paedos paedophile paedophiles paedophilia
+    pedo pedos pedophile pedophiles pedophilia pedophilic pedophiliac pedophiliacs paedo paedos paedophile paedophiles paedophilia paedophilic paedophiliac paedophiliacs
     childporn childporno childpornography
-    bestiality zoophile zoophiles zoophilia
-    necrophilia necrophile necrophiles
+    bestiality zoophile zoophiles zoophilia zoophilic zoophiliac zoophiliacs
+    necrophilia necrophile necrophiles necrophilic necrophiliac necrophiliacs
     incest incestuous
-    molest molests molested molester molesters molestation
+    molest molests molested molester molesters molestation molesting
     rape rapes raped raping rapist rapists rpe rpes rped rping rpist rpists
-    sodomy sodomize sodomized sodomite sodomites
+    sodomy sodomize sodomized sodomite sodomites sodomizing
     nude nudes nudity
     kys kms killyourself killurself godie
     damn dammit damned
@@ -139,6 +142,44 @@
     var c = collapse(word);
     if (c.length >= 4) COLLAPSED.add(c);
   });
+
+  /* Safe collision words are generated from the public-domain words_alpha
+   * dictionary (see safewords.js): dictionary words at Damerau-Levenshtein
+   * distance 1 from a banned word.  They are used only to suppress the
+   * fuzzy pass, never to suppress an exact match.  The source dictionary
+   * is fetched once at build time; this file embeds the result. */
+  var SAFE = new Set();
+  var safeSource = (typeof window !== 'undefined' && window.RBLX_SAFE_WORDS) || '';
+  if (safeSource) {
+    for (var safeWord of safeSource.split(/\s+/)) {
+      if (safeWord) SAFE.add(safeWord);
+    }
+  }
+  var FUZZY_WORDS = [];
+  WORDS.forEach(function (word) {
+    if (/^[a-z]+$/.test(word) && word.length >= 4) FUZZY_WORDS.push(word);
+  });
+
+  /* OSA distance <= 1: one insert, delete, substitute, or adjacent swap. */
+  function withinOne(a, b) {
+    if (a === b) return true;
+    if (Math.abs(a.length - b.length) > 1) return false;
+    var i = 0;
+    if (a.length === b.length) {
+      while (i < a.length && a.charAt(i) === b.charAt(i)) i++;
+      if (i === a.length) return true;
+      if (a.slice(i + 1) === b.slice(i + 1)) return true;          // substitution
+      if (i + 1 < a.length && a.charAt(i) === b.charAt(i + 1) &&
+          a.charAt(i + 1) === b.charAt(i)) {
+        return a.slice(i + 2) === b.slice(i + 2);                  // transposition
+      }
+      return false;
+    }
+    var longer = a.length > b.length ? a : b;
+    var shorter = a.length > b.length ? b : a;
+    while (i < shorter.length && longer.charAt(i) === shorter.charAt(i)) i++;
+    return longer.slice(i + 1) === shorter.slice(i);               // one insertion
+  }
 
   function norm(text, strip) {
     var out = '';
@@ -258,6 +299,42 @@
     }
   }
 
+  /* A conservative fuzzy pass for out-of-vocabulary tokens of five or more
+   * letters.  Short words are already covered by the exact list and are
+   * too collision-prone for edit distance (duck/luck/suck vs fuck). */
+  var TOKEN_RE = /[A-Za-z0-9@$!|+]+/g;
+
+  function scanFuzzy(text, spans) {
+    if (!FUZZY_WORDS.length) return;
+    TOKEN_RE.lastIndex = 0;
+    var m;
+    while ((m = TOKEN_RE.exec(text))) {
+      var token = m[0], first = m.index, last = first + token.length - 1;
+      var forms = [];
+      var f1 = norm(token, false).s;
+      var f2 = norm(token, true).s;
+      if (f1 && forms.indexOf(f1) < 0) forms.push(f1);
+      if (f2 && forms.indexOf(f2) < 0) forms.push(f2);
+
+      var safe = false;
+      for (var form of forms) {
+        if (SAFE.has(form)) { safe = true; break; }
+      }
+      if (safe) continue;
+
+      var hit = false;
+      for (var form2 of forms) {
+        if (form2.length < 5 || form2.length > 20) continue;
+        for (var bad of FUZZY_WORDS) {
+          if (Math.abs(bad.length - form2.length) > 1) continue;
+          if (withinOne(form2, bad)) { hit = true; break; }
+        }
+        if (hit) break;
+      }
+      if (hit) spans.push([first, last]);
+    }
+  }
+
   function maskWords(text) {
     var raw = String(text == null ? '' : text);
     var spans = [];
@@ -269,6 +346,7 @@
     scanCollapsed(leet, COLLAPSED, raw, spans);
     scanCollapsed(strip, COLLAPSED, raw, spans);
     scanGaps(raw, spans);
+    scanFuzzy(raw, spans);
 
     if (!spans.length) return raw;
 
@@ -303,6 +381,7 @@
   window.RBLXchatfilter = {
     clean: clean,
     mask: maskWords,
-    MAX: MAX
+    MAX: MAX,
+    words: Array.from(WORDS)
   };
 })();

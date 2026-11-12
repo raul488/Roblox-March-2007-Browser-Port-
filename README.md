@@ -56,9 +56,12 @@ and predict their own movement; they do not run the place's server Scripts.
 Remote avatars carry the player's body colors and a small downscaled
 T-shirt. Chat is ASCII-only, capped at 100 characters, rate-limited and
 filtered with an expanded profanity/slur list that sees through spaces,
-punctuation, leetspeak, inserted digits and doubled letters. Usernames are
-capped at 20 characters with ASCII letters/numbers, at most one space and
-one underscore.
+punctuation, leetspeak, inserted digits and doubled letters. The chat bar
+also has a per-player **Safe Chat** toggle: when it is on, the typed box is
+disabled and only phrases from the shipped Super Safe Chat tree can be
+sent or displayed (received text is validated against that exact phrase
+list). The setting persists locally. Usernames are capped at 20 characters
+with ASCII letters/numbers, at most one space and one underscore.
 
 The relay sees room names, display names, chat, avatars and game state; it
 does not put player IP addresses into the protocol or room list. A T-shirt
@@ -100,6 +103,13 @@ it can create a public room. Run it behind the tunnel with the loopback
 bind, tune `MAX_CONNECTIONS`/`MAX_ROOMS`/rate limits in its `.env`, and put
 per-IP/WAF rate limits on the tunnel as well. Never expose the Node port
 directly.
+
+The chat filter's safe-word guard (`web/js/safewords.js`) is generated from
+the public-domain [dwyl/english-words](https://github.com/dwyl/english-words)
+dictionary. It contains the dictionary words that are one edit away from a
+banned word, so fuzzy matching does not censor ordinary words such as
+`duck`, `luck`, `funky`, `maggot`, `regard` or `where`. The file header
+records the source and date; regenerate it if the banned list changes.
 
 ## Controls (2007 client)
 

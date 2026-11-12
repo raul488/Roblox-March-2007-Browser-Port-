@@ -174,9 +174,15 @@ canvas.viewport{ display:block; width:100%; height:100%; }
 #chatLog .chatLine b{ flex:0 0 auto; min-width:16px; margin-right:4px; font-weight:normal; }
 #chatLog .chatLine span{ flex:0 0 auto; color:#ffffff; }
 #chatInput{ display:block; position:fixed; left:0; right:0; bottom:0; width:100%; height:28px; box-sizing:border-box;
-            background:#b8b8b8; border:0; border-top:1px solid #777; color:#333; padding:4px 8px;
+            background:#b8b8b8; border:0; border-top:1px solid #777; color:#333; padding:4px 104px 4px 8px;
             font-size:13px; outline:none; font-family:inherit; z-index:52; }
 #chatInput:focus{ background:#c8c8c8; }
+#chatInput:disabled{ color:#666; background:#b0b0b0; }
+#safeOnlyBtn{ position:fixed; right:6px; bottom:4px; z-index:53; height:20px; min-width:92px;
+              padding:0 7px; border:1px solid #8b8b8b; background:#d4d0c8; color:#111;
+              font-family:inherit; font-size:11px; line-height:18px; cursor:pointer; }
+#safeOnlyBtn[aria-pressed="true"]{ background:#316ac5; border-color:#24405c; color:#fff; }
+#safeOnlyBtn:hover{ filter:brightness(1.05); }
 /* Super Safe Chat: ChatButton (32x23 Chat.png) + ChatMenuPanel above the
  * chat fold.  Four art states are the engine's FUN_005e8740 suffixes.
  * The client anchors the bubble above the backpack strip (a March-2007
@@ -301,6 +307,8 @@ input{ cursor:text; }
 <div id="chatPanel">
   <div id="chatLog"></div>
   <input id="chatInput" placeholder='To chat click here or press "/" key' maxlength="100" spellcheck="false">
+  <button type="button" id="safeOnlyBtn" class="safeOnlyBtn" aria-pressed="false"
+          title="Only send and see Super Safe Chat phrases">Safe Chat</button>
 </div>
 
 <div id="notif"></div>
@@ -462,6 +470,7 @@ input{ cursor:text; }
 <script src="js/namepolicy.js"></script>
 <script src="js/startpage.js"></script>
 <script src="js/netconfig.js"></script>
+<script src="js/safewords.js"></script>
 <script src="js/chatfilter.js"></script>
 <script src="js/multiplayer.js"></script>
 <script src="js/netgame.js"></script>

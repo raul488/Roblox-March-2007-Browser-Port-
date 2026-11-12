@@ -86,6 +86,7 @@ global.BrickColorFromId = id => ({
   rgb: id === 21 ? [245, 205, 47] : id === 22 ? [200, 90, 10] : [255, 255, 255]
 });
 global.location = { reload() {} };
+vm.runInThisContext(fs.readFileSync(path.join(__dirname, '../web/js/safewords.js'), 'utf8'));
 vm.runInThisContext(fs.readFileSync(path.join(__dirname, '../web/js/chatfilter.js'), 'utf8'));
 vm.runInThisContext(fs.readFileSync(path.join(__dirname, '../web/js/netgame.js'), 'utf8'));
 const NetGame = window.RBLXnetgame.NetGame;
@@ -233,6 +234,72 @@ async function main() {
   assert.ok(clientUi.chats.some(c => c.text === 'welcome' && c.who === 'Alice'));
   client.chat('hi');
   assert.ok(clientSession.sent.some(m => m.k === 'c' && m.text === 'hi' && !('from' in m)));
+
+  /* Safe-only is per player: only exact Super Safe Chat phrases can be
+   * sent or displayed. */
+  window.RBLXsafechat = {
+    /* "Peace dudes!" is a shipped phrase whose "dudes" is one edit from
+     * the banned "nudes"; an exact phrase must never be masked. */
+    isPhrase: t => t === 'Hello' || t === 'Hi there!' || t === 'Peace dudes!'
+  };
+  window.RBLXsafeOnlyMode = true;
+  client.setSafeOnly(true);
+  client.chatAt = 0;
+  const beforeSafe = clientSession.sent.filter(m => m.k === 'c').length;
+  client.chat('Hello');
+  const safeSent = clientSession.sent.filter(m => m.k === 'c').pop();
+  assert.strictEqual(safeSent.text, 'Hello');
+  assert.strictEqual(safeSent.safe, 1, 'safe phrase was not flagged');
+  client.chatAt = 0;
+  client.chat('Peace dudes!', true);
+  const peaceSent = clientSession.sent.filter(m => m.k === 'c').pop();
+  assert.strictEqual(peaceSent.text, 'Peace dudes!', 'safe phrase was masked');
+  assert.strictEqual(peaceSent.safe, 1);
+  client.chatAt = 0;
+  client.chat('not a phrase');
+  assert.strictEqual(clientSession.sent.filter(m => m.k === 'c').length, beforeSafe + 2,
+    'unsafe chat was sent in safe-only mode');
+  const beforeUnsafeChats = clientUi.chats.length;
+  clientSession.onMessage({ from: 'host', d: { k: 'c', from: 'host', text: 'not a phrase' } });
+  assert.strictEqual(clientUi.chats.length, beforeUnsafeChats,
+    'unsafe chat was displayed in safe-only mode');
+  clientSession.onMessage({ from: 'host', d: { k: 'c', from: 'host', text: 'Hi there!' } });
+  assert.ok(clientUi.chats.some(c => c.text === 'Hi there!'));
+
+  host.setSafeOnly(true);
+  host.chatLog.clear();
+  hostSession.onMessage({ from: 'join', d: { k: 'c', text: 'not a phrase' } });
+  assert.ok(!hostUi.chats.some(c => c.text === 'not a phrase'),
+    'safe-only host displayed unsafe chat');
+  const beforeHostSafe = hostSession.sent.filter(m => m.k === 'c' && m.from === 'join').length;
+  hostSession.onMessage({ from: 'join', d: { k: 'c', text: 'Hi there!' } });
+  assert.ok(hostUi.chats.some(c => c.text === 'Hi there!'));
+  assert.strictEqual(hostSession.sent.filter(m => m.k === 'c' && m.from === 'join').length,
+    beforeHostSafe + 1);
+  assert.strictEqual(hostSession.sent.filter(m => m.k === 'c' && m.from === 'join').pop().safe, 1);
+
+  /* Two short messages that form a slur when joined are blocked. */
+  window.RBLXsafeOnlyMode = false;
+  client.setSafeOnly(false);
+  host.setSafeOnly(false);
+  host.chatPrev = '';
+  host.chatPrevAt = 0;
+  host.chatAt = 0;
+  host.chat('fuc');
+  host.chatAt = 0;
+  host.chat('k');
+  assert.ok(hostUi.chats.some(c => c.text === 'fuc'));
+  assert.ok(!hostUi.chats.some(c => c.text === 'k'),
+    'cross-message slur was displayed');
+  assert.ok(!hostSession.sent.some(m => m.k === 'c' && m.text === 'k'),
+    'cross-message slur was sent');
+  client.chatPrev = '';
+  client.chatPrevAt = 0;
+  client.remoteChatTimes = [];
+  clientSession.onMessage({ from: 'host', d: { k: 'c', from: 'host', text: 'fuc' } });
+  clientSession.onMessage({ from: 'host', d: { k: 'c', from: 'host', text: 'k' } });
+  assert.ok(!clientUi.chats.some(c => c.text === 'k'),
+    'client displayed a cross-message slur');
 
   /* Joiner tool controls are proxy managers on the host; only built-in
    * BinTypes 1..7 are accepted, and the client sends equip/aim commands. */

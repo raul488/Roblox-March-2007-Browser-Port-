@@ -42,10 +42,26 @@ function parseSafeChat(text){
   }
   return root;
 }
+let cachedTree=null, cachedPhrases=null;
 function safeChatTree(){
+  if (cachedTree) return cachedTree;
   const t=window.CORE_ASSETS&&window.CORE_ASSETS['content/fonts/safechat.xml'];
-  return t? parseSafeChat(t) : null;
+  cachedTree=t? parseSafeChat(t) : null;
+  return cachedTree;
 }
+function safePhrases(){
+  if (cachedPhrases) return cachedPhrases;
+  const set=new Set();
+  const tree=safeChatTree();
+  (function collect(n){
+    if (!n) return;
+    if (!n.children.length) { if (n.label) set.add(n.label); return; }
+    for (const c of n.children) collect(c);
+  })(tree);
+  cachedPhrases=set;
+  return set;
+}
+function isPhrase(text){ return safePhrases().has(String(text)); }
 function treeSize(n){ let s=1; for (const c of n.children) s+=treeSize(c); return s; }
 function pathOf(node){
   const out=[];
@@ -82,7 +98,7 @@ function imageFor(state){
  * (main.js's Enter handler)  name colour cycles the classic palette */
 function sendPhrase(phrase){
   const game=window.RBLXnetgame&&window.RBLXnetgame.active;
-  if (game&&game.chat){ game.chat(phrase); return; }
+  if (game&&game.chat){ game.chat(phrase, true); return; }
   const clean=window.RBLXchatfilter?window.RBLXchatfilter.clean(phrase):{ok:true,text:phrase};
   if (!clean.ok) return;
   const ui=window.RBLXui_instance_open;
@@ -198,6 +214,7 @@ function mount(){
 
 window.RBLXsafechat={ parse:parseSafeChat, tree:safeChatTree,
                       size:treeSize, path:pathOf, rows:menuRows,
+                      phrases:safePhrases, isPhrase,
                       send:sendPhrase, mount, imageFor, BUTTON_IMAGES,
                       BUTTON_SIZE,
                       close:()=>{ if (mounted) mounted.close(); },

@@ -42,6 +42,9 @@
   }
 
   function filterChat(text) {
+    /* Exact Super Safe Chat phrases are trusted content: the profanity
+     * filter must not mask a shipped phrase (e.g. "Peace dudes!"). */
+    if (isSafePhrase(text)) return { ok: true, text: String(text) };
     if (window.RBLXchatfilter && window.RBLXchatfilter.clean) {
       return window.RBLXchatfilter.clean(text);
     }
@@ -51,6 +54,11 @@
     }
     s = s.replace(/\s+/g, ' ').trim().slice(0, 100);
     return s ? { ok: true, text: s } : { ok: false, error: 'Message is empty.' };
+  }
+
+  function isSafePhrase(text) {
+    return !!(window.RBLXsafechat && window.RBLXsafechat.isPhrase &&
+              window.RBLXsafechat.isPhrase(text));
   }
 
   function readColors(src) {
@@ -167,6 +175,9 @@
       this.chatAt = 0;
       this.chatLog = new Map();
       this.remoteChatTimes = [];
+      this.safeOnly = !!(typeof window !== 'undefined' && window.RBLXsafeOnlyMode);
+      this.chatPrev = '';
+      this.chatPrevAt = 0;
       /* client-side limits against a malicious host */
       this.netBase = (window.RBLXenv && window.RBLXenv.state && window.RBLXenv.state.netMap)
         ? window.RBLXenv.state.netMap.size : 0;
@@ -587,7 +598,7 @@
           rec.input.climbAxis = clampNum(d.c, -1, 1, 0);
           rec.lastInput = performance.now();
         } else if (d.k === 'c') {
-          this.hostChat(msg.from, d.text);
+          this.hostChat(msg.from, d.text, !!d.safe);
         } else if (d.k === 'avatar') {
           this.receiveAvatar(msg.from, d);
         } else if (d.k === 'tool') {
@@ -608,11 +619,50 @@
       }
     }
 
-    chat(text) {
+    setSafeOnly(on) {
+      this.safeOnly = !!on;
+      if (this.safeOnly) {
+        this.chatPrev = '';
+        this.chatPrevAt = 0;
+      }
+    }
+
+    chatBlocked(text) {
+      if (!window.RBLXchatfilter || !window.RBLXchatfilter.mask) return false;
+      var now = performance.now();
+      if (this.chatPrev && now - this.chatPrevAt < 10000) {
+        var a = window.RBLXchatfilter.mask(this.chatPrev);
+        var b = window.RBLXchatfilter.mask(text);
+        var ab = window.RBLXchatfilter.mask(this.chatPrev + text);
+        if (ab !== a + b) return true;
+      }
+      return false;
+    }
+
+    rememberChat(text) {
+      this.chatPrev = (this.chatPrev + String(text || '') + ' ').slice(-32);
+      this.chatPrevAt = performance.now();
+    }
+
+    chat(text, safe) {
       if (!this.active) return;
+      var wantsSafe = !!safe;
+      if (wantsSafe && !isSafePhrase(text)) {
+        if (this.ui && this.ui.notify) this.ui.notify('That is not a Super Safe Chat phrase.');
+        return;
+      }
       var result = filterChat(text);
       if (!result.ok) {
         if (this.ui && this.ui.notify) this.ui.notify(result.error);
+        return;
+      }
+      var isSafe = isSafePhrase(result.text);
+      if (this.safeOnly && !isSafe) {
+        if (this.ui && this.ui.notify) this.ui.notify('Safe Chat only: use the speech bubble.');
+        return;
+      }
+      if (!isSafe && this.chatBlocked(result.text)) {
+        if (this.ui && this.ui.notify) this.ui.notify('Message blocked.');
         return;
       }
       var now = performance.now();
@@ -621,15 +671,23 @@
         return;
       }
       this.chatAt = now;
+      var flag = isSafe ? 1 : 0;
       if (this.mode === 'host') {
         if (this.ui && this.ui.chat) this.ui.chat(result.text, this.nameOf(this.selfId));
-        this.session.send({ k: 'c', from: this.selfId, text: result.text });
+        this.session.send({ k: 'c', from: this.selfId, text: result.text, safe: flag });
       } else {
-        this.session.send({ k: 'c', text: result.text });
+        this.session.send({ k: 'c', text: result.text, safe: flag });
       }
+      this.rememberChat(result.text);
     }
 
-    hostChat(from, text) {
+    hostChat(from, text, safe) {
+      var result = filterChat(text);
+      if (!result.ok) return;
+      var isSafe = isSafePhrase(result.text);
+      if (this.safeOnly && !isSafe) return;
+      if (!isSafe && this.chatBlocked(result.text)) return;
+
       var now = performance.now();
       var log = this.chatLog.get(from);
       if (!log) {
@@ -640,24 +698,27 @@
       log.times = log.times.filter(t => now - t < 5000);
       if (log.times.length >= 5) return;
 
-      var result = filterChat(text);
-      if (!result.ok) return;
-
       log.last = now;
       log.times.push(now);
       var name = this.nameOf(from);
       if (this.ui && this.ui.chat) this.ui.chat(result.text, name);
-      this.session.send({ k: 'c', from: from, text: result.text });
+      this.session.send({ k: 'c', from: from, text: result.text, safe: isSafe ? 1 : 0 });
+      this.rememberChat(result.text);
     }
 
     clientChat(d) {
       var result = filterChat(d.text);
       if (!result.ok) return;
+      var isSafe = isSafePhrase(result.text);
+      if (this.safeOnly && !isSafe) return;
+      if (!isSafe && this.chatBlocked(result.text)) return;
+
       var now = performance.now();
       this.remoteChatTimes = this.remoteChatTimes.filter(t => now - t < 2000);
       if (this.remoteChatTimes.length >= 8) return;
       this.remoteChatTimes.push(now);
       if (this.ui && this.ui.chat) this.ui.chat(result.text, this.nameOf(d.from));
+      this.rememberChat(result.text);
     }
 
     step(dt, input, character, controller) {

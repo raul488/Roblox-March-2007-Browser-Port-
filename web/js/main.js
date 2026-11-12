@@ -161,6 +161,7 @@ function boot(){
   bindCameraControls();
   bindReportButton();
   bindChrome();
+  bindSafeOnly();
   requestAnimationFrame(loop);
 }
 
@@ -519,7 +520,15 @@ function bindInput(canvas){
     if (e.target===ui.$chatInput) return;
     if (e.target && e.target.tagName==='INPUT') return;   // typing on the start page (username box)
     const k=(e.key.length===1)? e.key.toLowerCase() : e.key;
-    if (k==='/'){ e.preventDefault(); ui.showChatInput(); return; }
+    if (k==='/'){
+      e.preventDefault();
+      if (window.RBLXsafeOnlyMode){
+        if (ui.notify) ui.notify('Safe Chat only: use the speech bubble.');
+      } else {
+        ui.showChatInput();
+      }
+      return;
+    }
     if (e.key===' '){ e.preventDefault(); }
     keys.add(k);
     if (tools) tools.keyDown(k);
@@ -535,6 +544,12 @@ function bindInput(canvas){
 
   ui.$chatInput.addEventListener('keydown', e=>{
     if (e.key==='Enter'){
+      if (window.RBLXsafeOnlyMode){
+        ui.$chatInput.value='';
+        ui.notify('Safe Chat only: use the speech bubble.');
+        e.preventDefault();
+        return;
+      }
       const t=ui.$chatInput.value.trim();
       if (t){
         if (netgame && netgame.chat) netgame.chat(t);
@@ -558,7 +573,14 @@ function bindInput(canvas){
   });
   /* clicking the chat fold opens the native-style prompt */
   if (ui.$chatList){
-    ui.$chatList.addEventListener('mousedown', e=>{ e.preventDefault(); ui.showChatInput(); });
+    ui.$chatList.addEventListener('mousedown', e=>{
+      e.preventDefault();
+      if (window.RBLXsafeOnlyMode){
+        ui.notify('Safe Chat only: use the speech bubble.');
+        return;
+      }
+      ui.showChatInput();
+    });
   }
 }
 
@@ -595,6 +617,47 @@ function bindChrome(){
   bind('perfWarn',()=>ui.hidePerfWarning());
   bind('reportBtn',()=>ui.notify('Report Abuse is unavailable in this offline port.'));
   bind('downloadCta',()=>ui.notify('Nothing to download  you are already playing the 2007 client in your browser. Pick a place above!'));
+}
+
+/* Per-player chat policy: when on, the typed box is disabled and only the
+ * Super Safe Chat phrasebook can send; received messages are accepted only
+ * if they are exact phrases from the shipped tree. */
+function applySafeOnly(on, announce){
+  on=!!on;
+  window.RBLXsafeOnlyMode=on;
+  try { localStorage.setItem('RBLXsafeOnly', on?'1':'0'); } catch(_){}
+  const input=document.getElementById('chatInput');
+  if (input){
+    input.disabled=on;
+    if (on) input.value='';
+    input.placeholder=on
+      ? 'Safe Chat only: use the speech bubble'
+      : 'To chat click here or press "/" key';
+    if (on) input.blur();
+  }
+  if (on){
+    const log=document.getElementById('chatLog');
+    if (log) log.innerHTML='';
+  }
+  const btn=document.getElementById('safeOnlyBtn');
+  if (btn){
+    btn.setAttribute('aria-pressed', on?'true':'false');
+    btn.textContent=on?'Safe Chat: ON':'Safe Chat: OFF';
+    btn.title=on
+      ? 'Safe Chat only: send and see Super Safe Chat phrases. Click for free chat.'
+      : 'Free chat. Click to allow only Super Safe Chat phrases.';
+  }
+  if (netgame && netgame.setSafeOnly) netgame.setSafeOnly(on);
+  if (announce) ui.notify(on
+    ? 'Safe Chat only: use the speech bubble.'
+    : 'Free chat enabled.');
+}
+function bindSafeOnly(){
+  let on=false;
+  try { on=localStorage.getItem('RBLXsafeOnly')==='1'; } catch(_){}
+  applySafeOnly(on, false);
+  const btn=document.getElementById('safeOnlyBtn');
+  if (btn) btn.addEventListener('click',()=>applySafeOnly(!window.RBLXsafeOnlyMode, true));
 }
 /* The client's lower-right camera pad (CameraTiltUp/ZoomIn/TiltDown/ZoomOut
  * circle icons, two columns).  Each press is one step, like the toolbar
