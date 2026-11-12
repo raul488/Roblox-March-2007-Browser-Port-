@@ -233,6 +233,15 @@ async function main() {
   assert.ok(hostAvatar.character.group.position.x > beforeLerp, 'remote interpolation did not move');
   assert.ok(clientSession.sent.some(m => m.k === 'i' && m.x === 1), 'client did not send input');
 
+  const remoteRec = client.remotes.get('host');
+  remoteRec.velocity.set(0, 0, 0);
+  const glideFrom = hostAvatar.character.group.position.x;
+  remoteRec.target.set(glideFrom + 20, hostAvatar.character.group.position.y, hostAvatar.character.group.position.z);
+  client.step(1 / 60, { moveDir: new V3(), jump: false, climbAxis: 0 }, clientChar, null);
+  const glided = hostAvatar.character.group.position.x - glideFrom;
+  assert.ok(glided > 0.4 && glided < 0.6,
+    'a large remote target jump was not capped (' + glided + ')');
+
   clientSession.onMessage({ from: 'host', d: { k: 'c', from: 'host', text: 'welcome' } });
   assert.ok(clientUi.chats.some(c => c.text === 'welcome' && c.who === 'Alice'));
   client.chat('hi');
@@ -519,6 +528,34 @@ async function main() {
   client.chat('hello there');
   assert.ok(clientSession.sent.some(m => m.k === 'c' && m.text === 'hello there'),
     'client stayed muted after the window');
+
+  /* Ack reconciliation: the host's current position trails by latency, so
+   * only the state at the last processed input may correct the predictor. */
+  client.selfSynced = true;
+  client.lastAck = 10;
+  client.inputHist = [{ s: 10, x: 100, y: 0, z: 0 }];
+  client.character.group.position.set(104, 0, 0);
+  const snapBase = { r: 0, v: [0, 0, 0], g: 1, h: 100, a: 1, t: 0, c: 0 };
+  client.applySnapshot({ p: [Object.assign({ i: client.selfId, p: [104, 0, 0], k: 10, kp: [100.1, 0, 0] }, snapBase)] });
+  assert.strictEqual(client.character.group.position.x, 104,
+    'latency lead was mistaken for prediction error');
+
+  client.lastAck = 10;
+  client.inputHist = [{ s: 11, x: 100, y: 0, z: 0 }];
+  client.character.group.position.set(104, 0, 0);
+  client.applySnapshot({ p: [Object.assign({ i: client.selfId, p: [104, 0, 0], k: 11, kp: [101, 0, 0] }, snapBase)] });
+  assert.strictEqual(client.character.group.position.x, 105,
+    'acked prediction error was not corrected relative to the current pose');
+  client.applySnapshot({ p: [Object.assign({ i: client.selfId, p: [104, 0, 0], k: 11, kp: [101, 0, 0] }, snapBase)] });
+  assert.strictEqual(client.character.group.position.x, 105,
+    'the same ack was applied twice');
+
+  client.lastAck = 11;
+  client.inputHist = [{ s: 12, x: 105, y: 0, z: 0 }];
+  client.character.group.position.set(105, 0, 0);
+  client.applySnapshot({ p: [Object.assign({ i: client.selfId, p: [115, 0, 0], k: 12, kp: [105, 0, 0] }, snapBase)] });
+  assert.strictEqual(client.character.group.position.x, 105,
+    'a 10-stud latency gap triggered a snap');
 
   host.dispose();
   client.dispose();

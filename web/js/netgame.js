@@ -14,8 +14,8 @@
 
   var THREE = window.THREE;
   var ZERO_INPUT = { moveDir: new THREE.Vector3(), jump: false, climbAxis: 0 };
-  var SNAPSHOT_HZ = 20;
-  var INPUT_HZ = 30;
+  var SNAPSHOT_HZ = 30;
+  var INPUT_HZ = 60;
   var INPUT_TIMEOUT = 500;
   var RESPAWN_MS = 5000;
   var MUTE_MS = 60000;
@@ -176,6 +176,9 @@
       this.chatAt = 0;
       this.muteUntil = 0;
       this.muteLog = new Map();
+      this.inputSeq = 0;
+      this.inputHist = [];
+      this.lastAck = 0;
       this.chatLog = new Map();
       this.remoteChatTimes = [];
       this.safeOnly = !!(typeof window !== 'undefined' && window.RBLXsafeOnlyMode);
@@ -505,6 +508,9 @@
             avatar: null,
             input: { moveDir: new THREE.Vector3(), jump: false, climbAxis: 0 },
             lastInput: 0,
+            inputSeq: 0,
+            ack: null,
+            ackNew: false,
             carryLook: null,
             carryPos: null,
             toolBin: 0,
@@ -599,6 +605,11 @@
           if (rec.input.moveDir.lengthSq() > 1) rec.input.moveDir.normalize();
           rec.input.jump = d.j === true;
           rec.input.climbAxis = clampNum(d.c, -1, 1, 0);
+          var seq = Math.floor(Number(d.s));
+          if (Number.isFinite(seq) && seq >= 0) {
+            rec.inputSeq = seq;
+            rec.ackNew = true;
+          }
           rec.lastInput = performance.now();
         } else if (d.k === 'c') {
           this.hostChat(msg.from, d.text, !!d.safe);
@@ -815,6 +826,12 @@
             rec.carryPos = null;
           }
           rec.humanoid.step(dt, rec.input);
+          if (rec.ackNew) {
+            var ap = rec.character.group.position;
+            rec.ack = { s: rec.inputSeq,
+                        x: +ap.x.toFixed(3), y: +ap.y.toFixed(3), z: +ap.z.toFixed(3) };
+            rec.ackNew = false;
+          }
           rec.character.step(dt, rec.input);
           if (rec.tool && rec.tool.tm){
             rec.tool.tm.update(dt, rec.tool.mouse, rec.character);
@@ -864,12 +881,26 @@
         var ch = r.character;
         if (!ch) continue;
         if (r.hasTarget) {
-          ch.group.position.lerp(r.target, k);
-          var dy = wrapYaw(r.targetYaw) - ch.group.rotation.y;
-          dy = ((dy % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-          if (dy > Math.PI) dy -= Math.PI * 2;
-          if (!isFinite(dy)) dy = 0;
-          ch.group.rotation.y += dy * k;
+          /* Glide toward the latest snapshot.  A big target jump (packet
+           * gap, respawn, host teleport) is capped instead of lerping a
+           * large fraction of it in one frame, which read as teleporting. */
+          var px = ch.group.position;
+          var dx = r.target.x - px.x, dy = r.target.y - px.y, dz = r.target.z - px.z;
+          var dist = Math.hypot(dx, dy, dz);
+          var cap = (30 + Math.hypot(r.velocity.x, r.velocity.y, r.velocity.z) * 1.5) * dt;
+          if (dist > cap && dist > 0.0001) {
+            var sc = cap / dist;
+            px.x += dx * sc;
+            px.y += dy * sc;
+            px.z += dz * sc;
+          } else {
+            px.lerp(r.target, k);
+          }
+          var dyaw = wrapYaw(r.targetYaw) - ch.group.rotation.y;
+          dyaw = ((dyaw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+          if (dyaw > Math.PI) dyaw -= Math.PI * 2;
+          if (!isFinite(dyaw)) dyaw = 0;
+          ch.group.rotation.y += dyaw * k;
         }
         ch.velocity.copy(r.velocity);
         ch.onGround = r.onGround;
@@ -1003,8 +1034,15 @@
     sendInput() {
       if (!this.session || !this.session.send) return;
       var md = this.input && this.input.moveDir;
+      this.inputSeq++;
+      var p = this.character && this.character.group && this.character.group.position;
+      if (p) {
+        this.inputHist.push({ s: this.inputSeq, x: p.x, y: p.y, z: p.z });
+        if (this.inputHist.length > 120) this.inputHist.shift();
+      }
       this.session.send({
         k: 'i',
+        s: this.inputSeq,
         x: md ? +md.x.toFixed(3) : 0,
         z: md ? +md.z.toFixed(3) : 0,
         j: !!(this.input && this.input.jump),
@@ -1033,7 +1071,14 @@
       var list = [];
       if (this.character) list.push(this.playerState(this.selfId, this.character, this.localTool, this.selfTeamColor()));
       for (var rec of this.remotes.values()) {
-        if (rec.character) list.push(this.playerState(rec.id, rec.character, rec.toolBin, rec.teamColor));
+        if (rec.character) {
+          var st = this.playerState(rec.id, rec.character, rec.toolBin, rec.teamColor);
+          if (rec.ack) {
+            st.k = rec.ack.s;
+            st.kp = [rec.ack.x, rec.ack.y, rec.ack.z];
+          }
+          list.push(st);
+        }
       }
       this.session.send({ k: 's', t: ++this.tick, p: list });
     }
@@ -1054,6 +1099,8 @@
           var wasAlive = this.character.alive;
           var p = this.character.group.position;
           var err = Math.hypot(p.x - x, p.y - y, p.z - z);
+          var ack = Math.floor(Number(e.k));
+          var ackOK = Number.isFinite(ack) && ack > 0;
           if (e.a === 0) {
             this.character.alive = false;
             if (this.character.nameTag) this.character.nameTag.visible = false;
@@ -1064,8 +1111,47 @@
             this.character.onGround = false;
             this.resetController(this.controller);
             this.selfSynced = true;
+            this.inputHist = [];
+            this.lastAck = 0;
           }
-          if (!this.selfSynced || err > 2.5 || Math.abs(p.y - y) > 3) p.set(x, y, z);
+          if (!this.selfSynced) {
+            p.set(x, y, z);
+            this.selfSynced = true;
+            this.inputHist = [];
+            if (ackOK) this.lastAck = ack;
+          } else if (e.a !== 0) {
+            /* Reconcile against the host's state at the last input it
+             * processed, not its current state: the current host position
+             * trails the local predictor by the network latency, and using
+             * it was what snapped the player back mid-run/mid-jump. */
+            if (ackOK && ack > this.lastAck) {
+              var hist = null;
+              for (var hi = 0; hi < this.inputHist.length; hi++) {
+                if (this.inputHist[hi].s === ack) { hist = this.inputHist[hi]; break; }
+              }
+              if (hist && Array.isArray(e.kp) && e.kp.length >= 3) {
+                var kx = Number(e.kp[0]), ky = Number(e.kp[1]), kz = Number(e.kp[2]);
+                if (isFinite(kx) && isFinite(ky) && isFinite(kz)) {
+                  var dx = kx - hist.x, dy = ky - hist.y, dz = kz - hist.z;
+                  var ae = Math.hypot(dx, dy, dz);
+                  if (ae > 0.5) {
+                    /* Cap one correction so a real desync (collision,
+                     * explosion) catches up over a few snapshots instead of
+                     * teleporting. */
+                    var sc = ae > 4 ? 4 / ae : 1;
+                    p.x += dx * sc;
+                    p.y += dy * sc;
+                    p.z += dz * sc;
+                  }
+                }
+              }
+              this.lastAck = ack;
+              this.inputHist = this.inputHist.filter(function (h) { return h.s > ack; });
+            }
+            /* Last-resort guard against a host/client state mismatch too
+             * large for the ack correction (or an older host with no ack). */
+            if (err > 20 || Math.abs(p.y - y) > 12) p.set(x, y, z);
+          }
           this.selfSynced = true;
           /* A host-side impulse (jumppad, explosion, beacon throw) must
            * reach the local predictor: adopt the host velocity only when
@@ -1108,6 +1194,9 @@
             avatar: null,
             input: { moveDir: new THREE.Vector3(), jump: false, climbAxis: 0 },
             lastInput: 0,
+            inputSeq: 0,
+            ack: null,
+            ackNew: false,
             carryLook: null,
             carryPos: null,
             toolBin: 0,

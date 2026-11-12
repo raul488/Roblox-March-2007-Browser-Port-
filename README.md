@@ -31,9 +31,11 @@ Multiplayer is a peer-hosted listen server: one player's browser runs the
 room, everyone else joins through a private relay. The relay keeps the room
 list, enforces the 16-player cap, and routes messages; it never exposes a
 player's IP to another player. A modified host can still cheat its own room.
+Joiners predict locally and reconcile against the host's last processed
+input, so normal latency does not rubber-band their own character; remote
+avatars glide toward the newest snapshot instead of jumping.
 
 The client is configured in `web/js/netconfig.js`:
-
 ```js
 window.RBLX_RELAY_URL = 'https://relay.example.com';
 ```
