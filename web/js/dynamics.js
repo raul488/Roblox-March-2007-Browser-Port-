@@ -900,10 +900,19 @@ class Dynamics {
   }
   _make(members){
     const a=new Assembly(members);
-    a.charAttach=members.some(l=>l.__charWeld);
+    /* A character weld only means something on a free assembly.  makeJoints
+     * floods across AABB contact, so a grounded beacon / restored model
+     * reaches the anchored map.  Attaching that static assembly to the
+     * character would mark the floor __charIgnore and every character probe
+     * would fall through it (the Crossroads/HHH collision-loss bug). */
+    const welded=!a.static&&members.some(l=>l.__charWeld);
+    a.charAttach=welded;
     /* A welded rider must not collide with the humanoid it is welded to;
      * the physics controller skips this flag. */
-    for (const l of members) l.__charIgnore=a.charAttach;
+    for (const l of members){
+      l.__charIgnore=welded;
+      if (a.static) delete l.__charWeld;
+    }
     const prev=this._refloodPrev;
     if (prev){
       let vx=0,vy=0,vz=0,wx=0,wy=0,wz=0,n=0;
@@ -1088,14 +1097,17 @@ class Dynamics {
     }
     if (seen) for (const l of visited) seen.add(l);
     /* makeJoints() against the character: the rig's Part instances are
-     * virtual in the port, so test their live world boxes here.  Mark only
-     * the parts actually in contact; _make propagates that to the assembly. */
+     * virtual in the port, so test their live world boxes here.  Recompute
+     * the flag (not just set it) so a flood also clears a stale weld from an
+     * earlier call; _make propagates it to the assembly. */
     const charBoxes=this._characterPartBoxes();
     if (charBoxes){
       for (const l of visited){
+        let weld=false;
         for (const box of charBoxes){
-          if (touching(l.aabb, box, CONTACT)){ l.__charWeld=true; break; }
+          if (touching(l.aabb, box, CONTACT)){ weld=true; break; }
         }
+        l.__charWeld=weld;
       }
     }
     /* Drop only the affected assemblies, and hand their non-visited
@@ -1348,12 +1360,18 @@ class Dynamics {
   }
   /* World AABBs of the character's body parts.  The classic rig parts are
    * real Parts in Workspace, so makeJoints() can weld a touched model to
-   * the torso even though the port renders the rig separately. */
+   * the torso even though the port renders the rig separately.
+   * The LEGS are deliberately excluded: feet standing on a brick are flush
+   * with it (CONTACT slop), and the flood always includes the anchored map,
+   * so a walking character used to weld the floor to itself on every
+   * beacon/regen makeJoints() call.  A model the torso/arms actually touch
+   * (the JetPack) still welds. */
   _characterPartBoxes(){
     const c=this.char;
     if (!c||!c.parts||!c.partWorldCF) return null;
     const out=[];
     for (const nm of Object.keys(c.parts)){
+      if (nm==='Left Leg'||nm==='Right Leg') continue;
       const rec=c.parts[nm];
       if (!rec||!rec.size) continue;
       const cf=c.partWorldCF(nm);
