@@ -38,6 +38,7 @@ const perf=window.__perf={
 };
 
 let renderer, scene, camera, world=null, character=null, controller=null, tools=null, sjobs=null, netgame=null;
+let localMuteUntil=0, localStopTimer=0;
 const MAX_PLACE_BYTES = 32 * 1024 * 1024;
 const MAX_PLACE_INSTANCES = 50000;
 let clock=new THREE.Clock();
@@ -553,12 +554,19 @@ function bindInput(canvas){
       const t=ui.$chatInput.value.trim();
       if (t){
         if (netgame && netgame.chat) netgame.chat(t);
-        else {
+        else if (performance.now() < localMuteUntil) {
+          ui.notify('Muted for ' + Math.ceil((localMuteUntil - performance.now()) / 1000) + 's.');
+        } else {
           var result = window.RBLXchatfilter
             ? window.RBLXchatfilter.clean(t)
             : { ok: true, text: t };
           if (!result.ok) ui.notify(result.error);
-          else ui.chat(result.text, (character&&character.playerName)||'Player1');
+          else if (result.slur) {
+            localMuteUntil = performance.now() + 60000;
+            ui.showSystemMessage('Stop');
+            clearTimeout(localStopTimer);
+            localStopTimer = setTimeout(()=>ui.hideSystemMessage(), 2000);
+          } else ui.chat(result.text, (character&&character.playerName)||'Player1');
         }
       }
       ui.$chatInput.value='';

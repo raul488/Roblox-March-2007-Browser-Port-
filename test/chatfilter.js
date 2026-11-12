@@ -106,6 +106,18 @@ for (const word of ['class', 'pass', 'grass', 'bass', 'mass', 'glass', 'embassy'
                     'assessment', 'assessments', 'assessor']) {
   assert.strictEqual(C.clean(word).text, word, 'ordinary word censored: ' + word);
 }
+
+/* Slurs are flagged separately from ordinary profanity. */
+assert.strictEqual(C.clean('nigger').slur, true);
+assert.strictEqual(C.clean('f a g g o t').slur, true);
+assert.strictEqual(C.clean('kike').slur, true);
+assert.strictEqual(C.clean('retard').slur, true);
+assert.strictEqual(C.slur('n i g g e r'), true);
+assert.strictEqual(C.slur('f4gg0t'), true);
+assert.strictEqual(C.slur('fuck'), false);
+assert.strictEqual(C.slur('retardant'), false);
+assert.strictEqual(C.slur('spiced'), false);
+assert.strictEqual(C.slur('class'), false);
 assert.strictEqual(C.clean('f@ck').text, '####');
 assert.strictEqual(C.clean('2fuck').text, '#####');
 assert.strictEqual(C.clean('fuck2').text, '#####');

@@ -100,9 +100,11 @@ function makeUi() {
   const chats = [];
   return {
     chats,
+    system: null,
     setPlayers(list) { this.players = list; },
     chat(text, who) { chats.push({ text, who }); },
-    notify(text) { this.note = text; }
+    notify(text) { this.note = text; },
+    showSystemMessage(text) { this.system = text; }
   };
 }
 
@@ -113,7 +115,8 @@ function makeSession(mode, players) {
     self: mode === 'host' ? 'host' : 'join',
     host: 'host',
     players,
-    send(data) { sent.push(data); return true; }
+    send(data) { sent.push(data); return true; },
+    sendTo(to, data) { sent.push(Object.assign({ to }, data)); return true; }
   };
 }
 
@@ -464,6 +467,58 @@ async function main() {
   host.onRoster([{ id: 'host', name: 'Alice', host: true }]);
   await tick();
   assert.ok(!host.remotes.has('join'), 'host did not remove a departed joiner');
+
+  /* A slur attempt mutes the sender for a minute and shows "Stop". */
+  const hostSentBeforeSlur = hostSession.sent.length;
+  host.chatAt = 0;
+  host.chat('n i g g e r');
+  assert.ok(host.muteUntil > performance.now(), 'slur did not mute the host');
+  assert.strictEqual(hostUi.system, 'Stop', 'Stop box did not appear');
+  assert.strictEqual(hostSession.sent.length, hostSentBeforeSlur, 'slur was sent');
+  host.chatAt = 0;
+  host.chat('hello');
+  assert.strictEqual(hostSession.sent.length, hostSentBeforeSlur, 'muted host sent chat');
+  host.muteUntil = performance.now() - 1;
+  host.chatAt = 0;
+  host.chatPrev = '';
+  host.chat('hello');
+  assert.ok(hostSession.sent.some(m => m.k === 'c' && m.text === 'hello'),
+    'host stayed muted after the window');
+
+  /* Hosts enforce the mute for joined players and target their client. */
+  host.muteLog.clear();
+  hostSession.onMessage({ from: 'join', d: { k: 'c', text: 'f a g g o t' } });
+  assert.ok((host.muteLog.get('join') || 0) > performance.now(),
+    'host did not mute the joiner');
+  const muteMsg = hostSession.sent.filter(m => m.k === 'mute').pop();
+  assert.ok(muteMsg && muteMsg.to[0] === 'join' && muteMsg.ms === 60000,
+    'no targeted mute message');
+  assert.ok(!hostUi.chats.some(c => c.text.indexOf('f a g g o t') >= 0),
+    'slur was displayed by the host');
+  const beforeMutedJoin = hostSession.sent.filter(m => m.k === 'c').length;
+  hostSession.onMessage({ from: 'join', d: { k: 'c', text: 'hello' } });
+  assert.strictEqual(hostSession.sent.filter(m => m.k === 'c').length, beforeMutedJoin,
+    'muted joiner was relayed');
+  host.muteLog.clear();
+  hostSession.onMessage({ from: 'join', d: { k: 'c', text: 'hello again' } });
+  assert.ok(hostSession.sent.some(m => m.k === 'c' && m.text === 'hello again'));
+
+  /* The muted client shows the same box and cannot send until it expires. */
+  client.setSafeOnly(false);
+  client.chatPrev = '';
+  client.chatPrevAt = 0;
+  clientSession.onMessage({ from: 'host', d: { k: 'mute', ms: 60000 } });
+  assert.ok(client.muteUntil > performance.now(), 'client mute not applied');
+  assert.strictEqual(clientUi.system, 'Stop');
+  const beforeMutedClient = clientSession.sent.length;
+  client.chatAt = 0;
+  client.chat('hello there');
+  assert.strictEqual(clientSession.sent.length, beforeMutedClient, 'muted client sent');
+  client.muteUntil = performance.now() - 1;
+  client.chatAt = 0;
+  client.chat('hello there');
+  assert.ok(clientSession.sent.some(m => m.k === 'c' && m.text === 'hello there'),
+    'client stayed muted after the window');
 
   host.dispose();
   client.dispose();

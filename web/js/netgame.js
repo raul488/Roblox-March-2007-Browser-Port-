@@ -18,6 +18,7 @@
   var INPUT_HZ = 30;
   var INPUT_TIMEOUT = 500;
   var RESPAWN_MS = 5000;
+  var MUTE_MS = 60000;
   var AVATAR_SHIRT_LIMIT = 48 * 1024;
   var MAX_SNAPSHOT_ENTRIES = 64;
   var MAX_REMOTES = 32;
@@ -173,6 +174,8 @@
       this.localTool = null;
       this.selfColorId = 0;
       this.chatAt = 0;
+      this.muteUntil = 0;
+      this.muteLog = new Map();
       this.chatLog = new Map();
       this.remoteChatTimes = [];
       this.safeOnly = !!(typeof window !== 'undefined' && window.RBLXsafeOnlyMode);
@@ -609,6 +612,7 @@
 
       if (d.k === 's') this.applySnapshot(d);
       else if (d.k === 'c') this.clientChat(d);
+      else if (d.k === 'mute') this.clientMute(d);
       else if (d.k === 'parts') this.applyParts(d);
       else if (d.k === 'who') {
         this.avatarReady.then(() => {
@@ -625,6 +629,30 @@
         this.chatPrev = '';
         this.chatPrevAt = 0;
       }
+    }
+
+    /* A slur attempt mutes the sender for a minute and puts "Stop" on the
+     * centre overlay (the classic Message box). */
+    muteSelf(ms) {
+      this.muteUntil = performance.now() + (ms || MUTE_MS);
+      this.stopBox();
+    }
+
+    stopBox() {
+      if (!this.ui) return;
+      if (this.ui.showSystemMessage) this.ui.showSystemMessage('Stop');
+      else if (this.ui.notify) this.ui.notify('Stop');
+      if (!this.ui.hideSystemMessage) return;
+      clearTimeout(this._stopAt);
+      this._stopAt = setTimeout(function () {
+        if (this.ui && this.ui.hideSystemMessage) this.ui.hideSystemMessage();
+      }, 2000);
+    }
+
+    clientMute(d) {
+      var ms = clampNum(d && d.ms, 1000, 600000, MUTE_MS);
+      this.muteUntil = performance.now() + ms;
+      this.stopBox();
     }
 
     chatBlocked(text) {
@@ -646,6 +674,13 @@
 
     chat(text, safe) {
       if (!this.active) return;
+      var now = performance.now();
+      if (this.muteUntil > now) {
+        if (this.ui && this.ui.notify) {
+          this.ui.notify('Muted for ' + Math.ceil((this.muteUntil - now) / 1000) + 's.');
+        }
+        return;
+      }
       var wantsSafe = !!safe;
       if (wantsSafe && !isSafePhrase(text)) {
         if (this.ui && this.ui.notify) this.ui.notify('That is not a Super Safe Chat phrase.');
@@ -656,6 +691,7 @@
         if (this.ui && this.ui.notify) this.ui.notify(result.error);
         return;
       }
+      if (result.slur) { this.muteSelf(); return; }
       var isSafe = isSafePhrase(result.text);
       if (this.safeOnly && !isSafe) {
         if (this.ui && this.ui.notify) this.ui.notify('Safe Chat only: use the speech bubble.');
@@ -665,7 +701,6 @@
         if (this.ui && this.ui.notify) this.ui.notify('Message blocked.');
         return;
       }
-      var now = performance.now();
       if (this.chatAt && now - this.chatAt < 600) {
         if (this.ui && this.ui.notify) this.ui.notify('Chat is rate-limited.');
         return;
@@ -682,13 +717,23 @@
     }
 
     hostChat(from, text, safe) {
+      var now = performance.now();
+      if ((this.muteLog.get(from) || 0) > now) return;
       var result = filterChat(text);
       if (!result.ok) return;
+      if (result.slur) {
+        /* The host is the authority for joined players: mute them locally
+         * and tell their client to show the same box. */
+        this.muteLog.set(from, now + MUTE_MS);
+        if (this.session.sendTo) {
+          this.session.sendTo([from], { k: 'mute', ms: MUTE_MS });
+        }
+        return;
+      }
       var isSafe = isSafePhrase(result.text);
       if (this.safeOnly && !isSafe) return;
       if (!isSafe && this.chatBlocked(result.text)) return;
 
-      var now = performance.now();
       var log = this.chatLog.get(from);
       if (!log) {
         log = { last: 0, times: [] };

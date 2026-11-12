@@ -131,6 +131,20 @@
     sharmouta sharmuta
   `.trim().split(/\s+/));
 
+  /* The slurs in the list above: race/ethnicity/sexuality/ability insults
+   * rather than ordinary profanity.  Saying one gets the sender muted; the
+   * rest of the list is still just masked. */
+  var SLURS = new Set(`
+    nigger niggers nigga niggas nignog nignogs negro negros ngger nggers ngga nggas
+    coon coons spic spics spick spicks chink chinks chnk chnks gook gooks kike kikes kke kkes
+    paki pakis raghead ragheads towelhead towelheads wetback wetbacks beaner beaners
+    redskin redskins injun injuns squaw squaws cameljockey cameljockeys sandnigger sandniggers
+    fag fags fagz fagot fagots faggot faggots faggotry fggot fggots fagged fagging faggy faggoty faggoting
+    dyke dykes dykey tranny trannies trannie shemale shemales
+    retard retards retarded retardation retardate retardates retarding
+    spastic spastics spaz spazz spazzy
+  `.trim().split(/\s+/));
+
   function collapse(word) {
     return word.replace(/(.)\1+/g, '$1');
   }
@@ -362,6 +376,14 @@
     return out.join('');
   }
 
+  function contains(text, words) {
+    var raw = String(text == null ? '' : text);
+    var spans = [];
+    scanFlat(norm(raw, false), words, raw, spans);
+    if (!spans.length) scanFlat(norm(raw, true), words, raw, spans);
+    return spans.length > 0;
+  }
+
   function clean(value) {
     var raw = String(value == null ? '' : value);
     if (!raw) return { ok: false, error: 'Message is empty.' };
@@ -376,12 +398,15 @@
     if (new RegExp('(.)\\1{' + MAX_REPEAT + ',}').test(text)) {
       return { ok: false, error: 'Too many repeated characters.' };
     }
-    return { ok: true, text: maskWords(text) };
+    var out = { ok: true, text: maskWords(text) };
+    if (contains(text, SLURS)) out.slur = true;
+    return out;
   }
 
   window.RBLXchatfilter = {
     clean: clean,
     mask: maskWords,
+    slur: function (text) { return contains(text, SLURS); },
     MAX: MAX,
     words: Array.from(WORDS)
   };

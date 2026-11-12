@@ -60,7 +60,9 @@ punctuation, leetspeak, inserted digits and doubled letters. The chat bar
 also has a per-player **Safe Chat** toggle: when it is on, the typed box is
 disabled and only phrases from the shipped Super Safe Chat tree can be
 sent or displayed (received text is validated against that exact phrase
-list). The setting persists locally. Usernames are capped at 20 characters
+list). The setting persists locally. Obvious slurs are not merely masked:
+the sender is muted for a minute and the centre message box says **Stop**.
+Usernames are capped at 20 characters
 with ASCII letters/numbers, at most one space and one underscore.
 
 The relay sees room names, display names, chat, avatars and game state; it
