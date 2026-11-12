@@ -66,7 +66,9 @@ work; joiner-held tools are the remaining tool gap.
 
 **Host (No Player)** creates the same room without a local character, for
 running a dedicated room in a browser tab. It still needs the tab open; a
-native headless server is not implemented.
+native headless server is not implemented. Duplicate display names get a
+numeric suffix (`Alice`, `Alice2`); the chat filter uses the expanded
+starter word list.
 
 ## Content and trust
 

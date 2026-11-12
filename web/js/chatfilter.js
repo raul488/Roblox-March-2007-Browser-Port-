@@ -31,7 +31,11 @@
     'faggot', 'faggots', 'fag', 'fags',
     'retard', 'retards', 'retarded',
     'rape', 'raped', 'raping',
-    'pedo', 'pedophile'
+    'pedo', 'pedophile',
+    'jackass', 'dumbass', 'douche', 'douchebag',
+    'motherfucker', 'motherfuckers', 'nazi', 'hitler',
+    'porn', 'porno', 'penis', 'vagina', 'tits', 'boobs',
+    'cum', 'kys', 'kms'
   ]);
 
   function normalizeToken(token) {

@@ -150,10 +150,12 @@
       this.selfId = String(this.session.self || '');
       this.hostId = String(this.session.host || '');
       this.players = Array.isArray(this.session.players) ? this.session.players : [];
+      this.selfName = this.nameOf(this.selfId);
 
       this.session.onMessage = msg => this.onMessage(msg);
       this.session.onRoster = list => this.onRoster(list);
       this.session.onClose = reason => this.onClose(reason);
+      this.applySelfName();
       this.updatePlayersUI();
     }
 
@@ -175,6 +177,15 @@
       return 'Player';
     }
 
+    applySelfName() {
+      if (!this.character) return;
+      var name = this.nameOf(this.selfId);
+      if (name && name !== 'Player' && this.character.playerName !== name) {
+        this.character.playerName = name;
+        if (this.character._drawTag) this.character._drawTag();
+      }
+    }
+
     updatePlayersUI() {
       if (!this.ui || !this.ui.setPlayers) return;
       this.ui.setPlayers(this.players.map(p => ({
@@ -186,6 +197,8 @@
 
     onRoster(list) {
       this.players = Array.isArray(list) ? list : [];
+      this.selfName = this.nameOf(this.selfId);
+      this.applySelfName();
       this.updatePlayersUI();
       this.syncRoster(this.players).catch(() => {});
     }
