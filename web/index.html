@@ -3,15 +3,19 @@
 <head>
 <meta charset="utf-8">
 <!-- Content-Security-Policy: everything this client needs is local or
-     embedded, so nothing external is allowed.  This keeps a place file's
-     TextureId/SoundId URLs (and any injected markup) from phoning home.
+     embedded, plus the one configured multiplayer relay.  This keeps a
+     place file's TextureId/SoundId URLs (and any injected markup) from
+     phoning home.
      - 'unsafe-inline' is required by the existing inline <style> block and
        the toolbar's onclick= handlers.
      - data: carries the embedded fonts, sky textures, sounds and the
        base64 assets some places ship; blob: is the T-shirt preview.
      - file: keeps double-click (file://) usage working, where 'self' does
-       not match a usable origin. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob:; script-src 'self' file: 'unsafe-inline'; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data: blob:; media-src 'self' file: data: blob:; font-src 'self' file: data:; connect-src 'self' file:; object-src 'none'; base-uri 'none'; form-action 'none'">
+       not match a usable origin.
+     - The local relay origins are for development.  When you set
+       RBLX_RELAY_URL in js/netconfig.js, add its exact HTTPS and WSS
+       origins here and remove the local ones if you do not need them. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob:; script-src 'self' file: 'unsafe-inline'; style-src 'self' file: 'unsafe-inline'; img-src 'self' file: data: blob:; media-src 'self' file: data: blob:; font-src 'self' file: data:; connect-src 'self' file: http://127.0.0.1:8787 ws://127.0.0.1:8787 http://localhost:8787 ws://localhost:8787; object-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Play Roblox 0.3.368 (March 2007) in your browser</title>
 <meta name="description" content="Play the March 2007 Roblox client (version 0.3.368) in your browser. A WebGL port of the original engine, with the classic places, avatar colours, chat and tools, no install, no account.">
 <meta name="robots" content="index,follow,max-image-preview:large">
@@ -234,6 +238,42 @@ canvas.viewport{ display:block; width:100%; height:100%; }
    39 40 hotspot is the arrow tip inside the 80×80 transparent canvas */
 body{ cursor:url('content/textures/ArrowCursor.png') 39 40, auto; }
 input{ cursor:text; }
+/* multiplayer: mode chooser, peer-hosted room list, room lobby.
+ * The relay only carries opaque room/player ids; no addresses are shown. */
+.netModal{ position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+           z-index:130; background:rgba(20,35,50,0.55); }
+.netBox{ width:min(430px,92vw); max-height:82vh; overflow:auto; box-sizing:border-box;
+         background:linear-gradient(#fdfdfd,#e8eef5); border:1px solid #8fa3b6;
+         box-shadow:0 6px 24px rgba(0,0,0,0.55); padding:14px 16px; color:#111; }
+.netBox.netWide{ width:min(560px,94vw); }
+.netBox h3{ margin:0 0 8px; font-size:15px; color:#24405c; font-weight:bold; }
+.netHint{ font-size:11px; color:#567; line-height:1.45; }
+.netStatus{ font-size:11.5px; color:#425d75; min-height:16px; margin:6px 0; }
+.netButtons{ display:flex; align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap; }
+.netBtn{ font-size:11.5px; padding:4px 12px; border:1px solid #a4b2c0; color:#345;
+         cursor:pointer; background:linear-gradient(#fdfdfd,#dde6f0); font-family:inherit; }
+.netBtn:hover{ background:#dcebfb; }
+.netBtn:disabled{ opacity:0.5; cursor:default; }
+.netBtn.netPrimary{ font-weight:bold; background:linear-gradient(#8fc3f2,#5c9be0);
+                    border-color:#274a68; color:#fff; }
+.netBtn.netQuiet{ background:transparent; }
+.sbHead{ display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.sbHead h3{ margin:0; }
+.sbActions{ display:flex; gap:6px; }
+.sbList{ border:1px solid #b3c1cf; background:#fff; max-height:260px; overflow:auto; margin-top:4px; }
+.sbRow{ display:flex; align-items:center; justify-content:space-between; gap:10px;
+        padding:7px 9px; border-bottom:1px solid #e3e9ef; font-size:12px; }
+.sbRow:last-child{ border-bottom:0; }
+.sbInfo{ min-width:0; flex:1; }
+.sbInfo b{ display:block; font-size:12.5px; color:#24405c; overflow:hidden;
+           text-overflow:ellipsis; white-space:nowrap; }
+.sbInfo span{ font-size:11px; color:#567; }
+.sbEmpty{ padding:14px 10px; font-size:12px; color:#567; text-align:center; }
+.lobbyPlayers{ border:1px solid #b3c1cf; background:#fff; margin:6px 0; max-height:200px; overflow:auto; }
+.lobbyPlayer{ padding:6px 9px; border-bottom:1px solid #e3e9ef; font-size:12px; color:#24405c; }
+.lobbyPlayer:last-child{ border-bottom:0; }
+.lobbyPlayer b{ font-size:12.5px; }
+.lobbyPlayer span{ color:#789; font-size:11px; margin-left:6px; }
 </style>
 </head>
 <body>
@@ -347,6 +387,55 @@ input{ cursor:text; }
   </div>
 </div>
 
+<!-- multiplayer mode chooser: every bundled place still has Play Solo -->
+<div id="modePicker" class="netModal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="modeTitle">
+  <div class="netBox">
+    <h3 id="modeTitle">Play <span id="modePlace"></span></h3>
+    <div class="netHint">Choose how to play this place.</div>
+    <div class="netButtons">
+      <button type="button" id="modeSolo" class="netBtn netPrimary">Play Solo</button>
+      <button type="button" id="modePlay" class="netBtn">Play</button>
+      <button type="button" id="modeCancel" class="netBtn netQuiet">Cancel</button>
+    </div>
+    <div id="modeHint" class="netHint" style="margin-top:8px"></div>
+  </div>
+</div>
+
+<!-- peer-hosted server browser. The relay exposes only room/player ids. -->
+<div id="serverBrowser" class="netModal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="sbTitle">
+  <div class="netBox netWide">
+    <div class="sbHead">
+      <h3 id="sbTitle">Servers · <span id="sbPlace"></span></h3>
+      <div class="sbActions">
+        <button type="button" id="sbHost" class="netBtn netPrimary">Host</button>
+        <button type="button" id="sbRefresh" class="netBtn netQuiet">Refresh</button>
+      </div>
+    </div>
+    <div id="sbStatus" class="netStatus"></div>
+    <div id="sbList" class="sbList"></div>
+    <div class="netButtons">
+      <button type="button" id="sbBack" class="netBtn netQuiet">Back</button>
+      <span class="netHint">Peer-hosted rooms. No player IPs are exchanged.</span>
+    </div>
+  </div>
+</div>
+
+<!-- connected room: roster comes from the relay, not from the host's page. -->
+<div id="roomLobby" class="netModal" style="display:none" role="dialog" aria-modal="true" aria-labelledby="lobbyTitle">
+  <div class="netBox">
+    <h3 id="lobbyTitle">Room · <span id="lobbyPlace"></span></h3>
+    <div id="lobbyRoom" class="netStatus"></div>
+    <div id="lobbyHost" class="netHint"></div>
+    <div id="lobbyPlayers" class="lobbyPlayers"></div>
+    <div id="lobbyStatus" class="netStatus"></div>
+    <div class="netHint">Peer-hosted. The host controls the game; leave if it looks wrong.
+      Gameplay replication is the next build.</div>
+    <div class="netButtons">
+      <button type="button" id="lobbyLeave" class="netBtn netQuiet">Leave</button>
+    </div>
+  </div>
+</div>
+
 <script src="lib/three.min.js"></script>
 <script src="js/g3d.js"></script>
 <script src="js/brickcolors.js"></script>
@@ -368,6 +457,8 @@ input{ cursor:text; }
 <script src="js/ui.js"></script>
 <script src="js/safechat.js"></script>
 <script src="js/startpage.js"></script>
+<script src="js/netconfig.js"></script>
+<script src="js/multiplayer.js"></script>
 <script src="places/index.js"></script>
 <script src="js/main.js"></script>
 <script src="js/version.js"></script>

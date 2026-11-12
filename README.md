@@ -9,7 +9,9 @@ and place files.
 Built with opencode. The original client is MaximumADHD's
 [Roblox_0.3.368.0](https://github.com/MaximumADHD/Roblox_0.3.368.0).
 
-There are no online features, for security reasons.
+There are no online features in the default build. Play Solo works fully
+offline. Multiplayer is optional, peer-hosted, and requires your own private
+relay; the client never opens a peer-to-peer connection.
 
 ## Run it
 
@@ -21,7 +23,35 @@ RobloxHQ, TabulaRasa, Haunted Mansion) or drag a `.rbxl`/`.rbxm` XML file
 onto the window.
 
 Place data, sounds, character.rbxm and three.js r128 are all embedded in
-`web/`. No network, no install.
+`web/`. Play Solo needs no network and no install.
+
+## Multiplayer
+
+Multiplayer is a peer-hosted listen server: one player's browser runs the
+room, everyone else joins through a private relay. The relay keeps the room
+list, enforces the 16-player cap, and routes messages; it never exposes a
+player's IP to another player. A modified host can still cheat its own room.
+
+The client is configured in `web/js/netconfig.js`:
+
+```js
+window.RBLX_RELAY_URL = 'https://relay.example.com';
+```
+
+Then add the same relay origins to the `connect-src` directive in
+`web/index.html`:
+
+```text
+https://relay.example.com wss://relay.example.com
+```
+
+When the page is served from `localhost` or `127.0.0.1`, an empty config
+defaults to `http://127.0.0.1:8787` so the private relay can be tested
+locally. Serve `web/` over HTTP (not `file://`) for local multiplayer.
+
+The current build wires the mode chooser, server browser and room handshake.
+Gameplay state replication, server scripts and tools across clients are the
+next stage.
 
 ## Content and trust
 
@@ -30,9 +60,9 @@ preservation. Imported `.rbxl`/`.rbxm` files run their embedded scripts on
 the built-in Lua layer, so only load files you trust.
 
 `web/index.html` sets a Content-Security-Policy that allows only local and
-embedded (`data:`/`blob:`) resources. A `TextureId`/`SoundId` pointing at an
-outside URL is blocked, and there is no `HttpService`, so place scripts
-have no network access.
+embedded (`data:`/`blob:`) resources plus the configured relay. A
+`TextureId`/`SoundId` pointing at an outside URL is blocked, and there is no
+`HttpService`, so place scripts have no network access.
 
 ## Controls (2007 client)
 

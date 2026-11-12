@@ -73,7 +73,12 @@ function buildPlaceList(){
     const el=document.createElement('div');
     el.className='pl';
     el.textContent=name;
-    el.onclick=()=>joinPlace(name);
+    el.onclick=()=>{
+      if (window.RBLXmultiplayer && window.RBLXmultiplayer.chooseMode)
+        window.RBLXmultiplayer.chooseMode(name, ()=>joinPlace(name));
+      else
+        joinPlace(name);
+    };
     list.appendChild(el);
   }
   if (!(window.PLACE_REGISTRY||[]).length){
