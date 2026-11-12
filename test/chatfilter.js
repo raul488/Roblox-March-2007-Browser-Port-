@@ -22,7 +22,7 @@ assert.strictEqual(C.clean('fuck').text, '####');
 assert.strictEqual(C.clean('sh1t').text, '####');
 assert.strictEqual(C.clean('b1tch').text, '#####');
 assert.strictEqual(C.clean('class').text, 'class');
-assert.strictEqual(C.clean('ass').text, 'ass');
+assert.strictEqual(C.clean('ass').text, '###');
 assert.strictEqual(C.clean('hello\nworld').ok, false);
 
 /* Spaces, punctuation, inserted digits and doubled letters. */
@@ -90,6 +90,22 @@ assert.strictEqual(C.clean('booms').text, 'booms');
 assert.strictEqual(C.clean('ducks').text, 'ducks');
 assert.strictEqual(C.clean('fick').text, 'fick');
 assert.strictEqual(C.clean('nani').text, 'nani');
+
+/* Standalone "ass" is banned without touching real words that contain it. */
+assert.strictEqual(C.clean('ass').text, '###');
+assert.strictEqual(C.clean('Ass').text, '###');
+assert.strictEqual(C.clean('a ss').text, '# ##');
+assert.strictEqual(C.clean('a.s.s').text, '#.#.#');
+assert.strictEqual(C.clean('@ss').text, '###');
+assert.strictEqual(C.clean('asses').text, '#####');
+assert.strictEqual(C.clean('asss').text, '####');
+assert.strictEqual(C.clean('kick ass').text, '#### ###');
+assert.strictEqual(C.clean('kickass').text, '#######');
+for (const word of ['class', 'pass', 'grass', 'bass', 'mass', 'glass', 'embassy',
+                    'assassin', 'assassinate', 'assess', 'assessed', 'assessing',
+                    'assessment', 'assessments', 'assessor']) {
+  assert.strictEqual(C.clean(word).text, word, 'ordinary word censored: ' + word);
+}
 assert.strictEqual(C.clean('f@ck').text, '####');
 assert.strictEqual(C.clean('2fuck').text, '#####');
 assert.strictEqual(C.clean('fuck2').text, '#####');

@@ -49,9 +49,10 @@
     bullshitting horseshit horseshits
     bitch bitches bitching bitchy bitched bitchass bitchface sonofabitch sonofabitches
     btch btchs btching btchy btchass btchface sonofabtch bch bchs btchz
+    ass asss
     asshole assholes asshat asshats asswipe asswipes assclown assclowns asskisser asskissers
     asslicker asslickers assbag assbags assface assfaces dumbass dumbasses jackass jackasses
-    smartass smartasses fatass fatasses badass badasses ahole aholes
+    smartass smartasses fatass fatasses badass badasses ahole aholes kickass kickasses
     cunt cunts cunty cuntface cuntfaced cnt cnts cnty cntface cntz cunted cunting
     dick dicks dickhead dickheads dickwad dickwads dickface dickfaces dickhole dickholes
     dck dcks dckhead dckheads dckwad dckwads dckface dckhole dckz dicked dicking
