@@ -15,3 +15,36 @@ npm-debug.log*
 
 # Local agent instructions (the workspace copy lives outside the repo)
 /web/AGENTS.md
+
+# Private multiplayer relay and deployment material.
+# The relay source lives OUTSIDE this public repo: ../Roblox-2007-Relay
+# These rules are a safety net for accidental copies and local secrets.
+*relay*
+*Relay*
+/relay/
+/server/
+/private/
+/private-relay/
+/secrets/
+/credentials/
+/cloudflared/
+/.cloudflared/
+/logs/
+.env
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.token
+*.secret
+*.kdbx
+*.pid
+id_rsa
+id_ed25519
+id_ecdsa
+known_hosts

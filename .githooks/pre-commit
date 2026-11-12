@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Block private relay/secret files from ever entering this public repo.
+# Installed via: git config core.hooksPath .githooks
+set -u
+
+fail=0
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null || echo .)
+cd "$repo_root" || exit 1
+
+block() {
+  printf '\nCOMMIT BLOCKED: %s\n' "$1" >&2
+  fail=1
+}
+
+files=()
+while IFS= read -r -d '' f; do
+  files+=("$f")
+done < <(git diff --cached --name-only --diff-filter=ACMR -z)
+
+shopt -s nocasematch
+
+for f in "${files[@]}"; do
+  # .env.example is the only dotenv file allowed.
+  if [[ "$f" == ".env.example" || "$f" == *"/.env.example" ]]; then
+    continue
+  fi
+
+  case "$f" in
+    .env|*.env|.env.*|*/.env|*/.env.*)
+      block "$f (environment/secrets file)" ;;
+    *.pem|*.key|*.p12|*.pfx|*.crt|*.cer|*.token|*.secret|*.kdbx|*.log)
+      block "$f (private key, token, certificate, or log)" ;;
+    id_rsa|id_ed25519|id_ecdsa|known_hosts|*/id_rsa|*/id_ed25519|*/id_ecdsa|*/known_hosts)
+      block "$f (SSH material)" ;;
+  esac
+
+  # Relay/server/private trees and any folder with "relay" in its name.
+  if [[ "$f" =~ (^|/)(relay|server|private|private-relay|secrets|credentials|cloudflared|logs)(/|$) ]]; then
+    block "$f (private relay/deployment path)"
+  fi
+  if [[ "$f" =~ (^|/)[^/]*relay[^/]*(/|$) ]]; then
+    block "$f (relay path)"
+  fi
+done
+
+# Content tripwire for the obvious mistakes. The hook itself contains these
+# patterns, so it is excluded.
+secret_re='(BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY|CLOUDFLARE_TUNNEL_TOKEN=|TUNNEL_TOKEN=|RELAY_ADMIN_TOKEN=|ADMIN_TOKEN=|SECRET_KEY=|PRIVATE_KEY=|API_TOKEN=|AUTH_TOKEN=)'
+matches=$(git grep --cached -l -I -E "$secret_re" -- . ':(exclude).githooks/**' 2>/dev/null || true)
+if [[ -n "$matches" ]]; then
+  while IFS= read -r f; do
+    block "$f (secret-looking content)"
+  done <<< "$matches"
+fi
+
+if [[ "$fail" -ne 0 ]]; then
+  printf '\nThis is the public client repo. Relay code and secrets live outside it.\n' >&2
+  printf 'Relay repo: ../Roblox-2007-Relay (private).\n' >&2
+  printf 'Unstage with: git restore --staged <file>\n\n' >&2
+  exit 1
+fi
+
+exit 0
