@@ -224,6 +224,7 @@
       }
       var b = Number(t.binType) || 0;
       if (!(b >= 1 && b <= 7)) {
+        this.equipTool(null);
         if (this.ui && this.ui.notify) this.ui.notify('That custom gear is host-only.');
         return;
       }
@@ -505,6 +506,7 @@
         var np = window.RBLXenv.addNetPlayer(rec.id, rec.name, ch);
         if (np && np.teamColor != null) rec.teamColor = np.teamColor;
       }
+      this.updatePlayersUI();
     }
 
     disposeCharacter(ch) {

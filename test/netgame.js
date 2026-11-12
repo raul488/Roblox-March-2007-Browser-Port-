@@ -249,6 +249,13 @@ async function main() {
   client.step(1 / 30, { moveDir:new V3(), jump:false, climbAxis:0 }, clientChar, null);
   assert.ok(clientSession.sent.some(m => m.k === 'tool' && m.e === 0 && m.p === true));
 
+  /* Custom BinType 0 gear cannot be proxied; selecting it clears the
+   * previous tool and tells the player instead of faking it. */
+  client.equipTool({ binType:0, name:'Ghostwalk' });
+  assert.strictEqual(client.selectedTool, null);
+  assert.ok(clientSession.sent.some(m => m.k === 'tool' && m.e === 2));
+  assert.ok(/host-only/.test(clientUi.note || ''));
+
   /* Host-authoritative respawn: host local player, remote joiner, and the
    * joiner's own local body all come back after the 5 s timer. */
   hostChar.alive = false;
