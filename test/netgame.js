@@ -73,7 +73,12 @@ class FakeHumanoid {
 }
 
 global.window = global;
-global.THREE = { Vector3: V3 };
+global.THREE = {
+  Vector3: V3,
+  BufferGeometry: class { setFromPoints() { return this; } dispose() {} },
+  LineBasicMaterial: class { constructor(o) { Object.assign(this, o); } dispose() {} },
+  Line: class { constructor() { this.parent = null; } }
+};
 global.RBLXcharacter = { Character: FakeCharacter };
 global.RBLXphysics = { Humanoid: FakeHumanoid };
 global.BrickColorFromId = id => ({
@@ -86,7 +91,7 @@ vm.runInThisContext(fs.readFileSync(path.join(__dirname, '../web/js/netgame.js')
 const NetGame = window.RBLXnetgame.NetGame;
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
-const scene = { remove() {} };
+const scene = { add() {}, remove() {} };
 const world = { spawnPoints: [{ cf: { pos: { x: 0, y: 0, z: 0 } } }],
   inventory: [{ props: { BinType: 6 } }] };
 
@@ -155,6 +160,12 @@ async function main() {
   assert.ok(snap.p.some(p => p.i === 'host'), 'snapshot missing host player');
   assert.ok(snap.p.some(p => p.i === 'join'), 'snapshot missing joiner');
 
+  host.localTool = 6;
+  host.sendSnapshot();
+  const snapTool = hostSession.sent.filter(m => m.k === 's').pop();
+  assert.strictEqual(snapTool.p.find(p => p.i === 'host').t, 6,
+    'host held tool missing from the snapshot');
+
   host.chat('hello');
   assert.ok(hostUi.chats.some(c => c.text === 'hello' && c.who === 'Alice'));
   assert.ok(hostSession.sent.some(m => m.k === 'c' && m.from === 'host'));
@@ -179,7 +190,7 @@ async function main() {
     from: 'host',
     d: {
       k: 's', t: 1, p: [
-        { i: 'host', p: [5, 3, 0], r: 0.5, v: [0, 0, 0], g: 1, h: 100, a: 1 },
+        { i: 'host', p: [5, 3, 0], r: 0.5, v: [0, 0, 0], g: 1, h: 100, a: 1, t: 6 },
         { i: 'join', p: [10, 3, 0], r: 0, v: [0, 0, 0], g: 1, h: 80, a: 1 }
       ]
     }
@@ -189,6 +200,7 @@ async function main() {
   const hostAvatar = client.remotes.get('host');
   assert.ok(hostAvatar.character, 'client host avatar did not load');
   assert.ok(hostAvatar.hasTarget, 'client host target missing');
+  assert.strictEqual(hostAvatar.character.toolVisual, 6, 'client did not show the host held tool');
 
   const tinyPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
   clientSession.onMessage({
@@ -370,7 +382,7 @@ async function main() {
   const partMsg = { k:'parts', p:[
     { i:101, n:1, c:'Part', s:[1,1,1], f:[0,0,0,1,0,0,0,1,0,0,0,1], a:0, k:1, h:1 },
     { i:102, n:1, c:'Part', s:[2,2,2], f:[5,0,0,1,0,0,0,1,0,0,0,1], a:0, k:1, h:1 }
-  ], d:[7], f:[{ t:'e', p:[1,2,3], r:4 }] };
+  ], d:[7], f:[{ t:'e', p:[1,2,3], r:4 }, { t:'l', a:[0,0,0], b:[10,0,0] }] };
   const sent = [];
   window.RBLXenv = {
     state: { netMap: new Map(), world: {} },
@@ -397,6 +409,9 @@ async function main() {
   window.RBLXenv.state.netMap.set(7, { id:7 });
   client2.applyParts(partMsg);
   assert.deepStrictEqual(sent, ['new:101', 'new:102', 'del:7']);
+  assert.strictEqual(client2.fx.length, 1, 'laser line FX did not spawn');
+  client2.stepFx(0.2);
+  assert.strictEqual(client2.fx.length, 0, 'laser line FX did not expire');
   client2.dispose();
 
   console.log('ALL NETGAME TESTS PASSED');
