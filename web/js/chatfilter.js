@@ -115,7 +115,7 @@
     crap craps crappy
     piss pissed pissing pisser pissers pissoff
     puta putas puto putos mierda cabron cabrona pendejo pendeja pendejos pendejas
-    chingar chingada joder jodete verga culero culiao zorra
+    chingar chingada joder jodete verga culero culiao zorra hijodeputa hijodeputo hijueputa
     merde putain salope connard connasse encule enculer batard chier chienne
     scheisse scheiss arschloch arsch wichser ficker hurensohn hure huren schwuchtel fotze
     kanker klootzak tering
@@ -226,6 +226,38 @@
     }
   }
 
+  /* A star/punctuation gap can erase too many letters for the normalized
+   * forms to recover ("s**t" becomes "st"). These are the common short
+   * stems that cannot be in the word list without matching ordinary
+   * two-letter words. */
+  var GAP = [
+    /f\W+k(?![A-Za-z])/gi,
+    /s\W+t(?![A-Za-z])/gi,
+    /b\W+ch(?![A-Za-z])/gi,
+    /c\W+nt(?![A-Za-z])/gi,
+    /c\W+t(?![A-Za-z])/gi,
+    /d\W+ck(?![A-Za-z])/gi,
+    /d\W+k(?![A-Za-z])/gi,
+    /p\W{2,}y(?![A-Za-z])/gi,
+    /n\W+er(?![A-Za-z])/gi,
+    /n\W+ger(?![A-Za-z])/gi,
+    /f\W+got(?![A-Za-z])/gi,
+    /k\W+ke(?![A-Za-z])/gi,
+    /sp\W+c(?![A-Za-z])/gi,
+    /g\W{2,}k(?![A-Za-z])/gi
+  ];
+
+  function scanGaps(text, spans) {
+    for (var re of GAP) {
+      re.lastIndex = 0;
+      var m;
+      while ((m = re.exec(text))) {
+        addMatch(text, m.index, m.index + m[0].length - 1, spans);
+        if (m[0].length === 0) re.lastIndex++;
+      }
+    }
+  }
+
   function maskWords(text) {
     var raw = String(text == null ? '' : text);
     var spans = [];
@@ -236,6 +268,7 @@
     scanFlat(strip, WORDS, raw, spans);
     scanCollapsed(leet, COLLAPSED, raw, spans);
     scanCollapsed(strip, COLLAPSED, raw, spans);
+    scanGaps(raw, spans);
 
     if (!spans.length) return raw;
 

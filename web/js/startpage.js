@@ -202,7 +202,7 @@ if (browseBtn && fileInput){
   fileInput.addEventListener('change', function(){
     var f=fileInput.files && fileInput.files[0];
     if (!f) return;
-    if (!/^image\//.test(f.type)) return;
+    if (!/^image\/(png|jpeg|gif|webp)$/i.test(f.type)) return;
     var rd=new FileReader();
     rd.onloadend=function(){
       if (typeof rd.result!=='string') return;
