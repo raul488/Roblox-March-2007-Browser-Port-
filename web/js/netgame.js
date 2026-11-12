@@ -265,8 +265,8 @@
       if (!rec || !rec.character) return;
       var e = Number(d.e);
       if (e !== 0 && e !== 1 && e !== 2) return;
-      var now = performance.now();
-      if (e !== 0) {
+      if (e === 1) {
+        var now = performance.now();
         if (rec.toolAt && now - rec.toolAt < 250) return;
         rec.toolAt = now;
       }
@@ -1028,12 +1028,12 @@
         rec.health = clampNum(e.h, 0, 200, 0);
         var wasDead = !rec.alive;
         rec.alive = e.a !== 0;
-        var tb = clampNum(e.t, 0, 7, 0);
+        var tb = Math.floor(clampNum(e.t, 0, 7, 0));
         if (tb !== rec.toolBin){
           rec.toolBin = tb;
           if (rec.character && rec.character.setToolVisual) rec.character.setToolVisual(tb || null);
         }
-        var tc = clampNum(e.c, 0, 4096, 0);
+        var tc = Math.floor(clampNum(e.c, 0, 4096, 0));
         if (tc !== rec.teamColor){
           rec.teamColor = tc;
           if (rec.character && rec.character.setTagColor) rec.character.setTagColor(this.teamCSS(tc));
