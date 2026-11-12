@@ -17,12 +17,99 @@
   var SNAPSHOT_HZ = 20;
   var INPUT_HZ = 30;
   var INPUT_TIMEOUT = 500;
+  var AVATAR_SHIRT_LIMIT = 48 * 1024;
 
-  function cleanChat(text) {
-    return String(text == null ? '' : text)
-      .replace(/[\u0000-\u001f\u007f]/g, '')
-      .trim()
-      .slice(0, 100);
+  function filterChat(text) {
+    if (window.RBLXchatfilter && window.RBLXchatfilter.clean) {
+      return window.RBLXchatfilter.clean(text);
+    }
+    var s = String(text == null ? '' : text);
+    if (!s || /[^\x20-\x7E]/.test(s)) {
+      return { ok: false, error: 'Chat is ASCII only.' };
+    }
+    s = s.replace(/\s+/g, ' ').trim().slice(0, 100);
+    return s ? { ok: true, text: s } : { ok: false, error: 'Message is empty.' };
+  }
+
+  function readColors(src) {
+    var out = {};
+    if (!src || typeof src !== 'object') return out;
+    for (var key of ['head', 'torso', 'arms', 'legs']) {
+      var n = Number(src[key]);
+      if (!Number.isFinite(n)) continue;
+      if (window.BrickColorFromId && !window.BrickColorFromId(n)) continue;
+      out[key] = n;
+    }
+    return out;
+  }
+
+  function sanitizeAvatar(d) {
+    if (!d || typeof d !== 'object') return null;
+    var colors = readColors(d.c);
+    var shirt = null;
+    if (typeof d.t === 'string' &&
+        /^data:image\/png;base64,/i.test(d.t) &&
+        d.t.length <= AVATAR_SHIRT_LIMIT &&
+        pngSizeOk(d.t)) {
+      shirt = d.t;
+    }
+    if (!Object.keys(colors).length && !shirt) return null;
+    return { colors: colors, shirt: shirt };
+  }
+
+  /* Only accept a small PNG with sane dimensions from the network. Normal
+   * clients send a 128px PNG produced by shrinkShirt below. */
+  function pngSizeOk(url) {
+    try {
+      var comma = url.indexOf(',');
+      if (comma < 0) return false;
+      var head = atob(url.slice(comma + 1, comma + 1 + 40));
+      if (head.slice(0, 8) !== '\x89PNG\r\n\x1a\n') return false;
+      var w = ((head.charCodeAt(16) & 255) << 24) |
+              ((head.charCodeAt(17) & 255) << 16) |
+              ((head.charCodeAt(18) & 255) << 8) |
+              (head.charCodeAt(19) & 255);
+      var h = ((head.charCodeAt(20) & 255) << 24) |
+              ((head.charCodeAt(21) & 255) << 16) |
+              ((head.charCodeAt(22) & 255) << 8) |
+              (head.charCodeAt(23) & 255);
+      return w > 0 && h > 0 && w <= 256 && h <= 256;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /* Downscale the local T-shirt once so the relay's 64 KB frame limit is
+   * never a problem and remote clients get a small PNG. */
+  function shrinkShirt(url) {
+    return new Promise(function (resolve) {
+      if (!url || typeof url !== 'string' ||
+          !/^data:image\/(png|jpeg|webp);base64,/i.test(url) ||
+          typeof document === 'undefined' || typeof Image === 'undefined') {
+        resolve(null);
+        return;
+      }
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var sizes = [128, 96, 64];
+          for (var i = 0; i < sizes.length; i++) {
+            var c = document.createElement('canvas');
+            c.width = c.height = sizes[i];
+            var g = c.getContext('2d');
+            g.clearRect(0, 0, c.width, c.height);
+            g.drawImage(img, 0, 0, c.width, c.height);
+            var out = c.toDataURL('image/png');
+            if (out.length <= AVATAR_SHIRT_LIMIT) return resolve(out);
+          }
+          resolve(null);
+        } catch (_) {
+          resolve(null);
+        }
+      };
+      img.onerror = function () { resolve(null); };
+      img.src = url;
+    });
   }
 
   class NetGame {
@@ -38,12 +125,23 @@
 
       this.players = [];
       this.remotes = new Map();
+      this.profiles = new Map();
+      this.avatarSeen = new Set();
       this.active = true;
       this.input = ZERO_INPUT;
       this.inputAcc = 0;
       this.snapAcc = 0;
       this.tick = 0;
       this.selfSynced = false;
+      this.chatAt = 0;
+      this.chatLog = new Map();
+      this.remoteChatTimes = [];
+
+      var localPlayer = window.RBLXplayer || {};
+      this.avatar = { colors: readColors(localPlayer.colors), shirt: null };
+      this.avatarReady = shrinkShirt(localPlayer.tshirt).then(url => {
+        this.avatar.shirt = url;
+      });
 
       this.selfId = String(this.session.self || '');
       this.hostId = String(this.session.host || '');
@@ -58,6 +156,11 @@
     start() {
       this.syncRoster(this.players).catch(() => {});
       this.updatePlayersUI();
+      this.avatarReady.then(() => {
+        if (!this.active) return;
+        if (this.mode === 'client') this.sendAvatar();
+        else if (this.session.send) this.session.send({ k: 'who' });
+      }).catch(() => {});
       if (this.mode === 'host') this.sendSnapshot();
     }
 
@@ -92,6 +195,73 @@
       return new THREE.Vector3(0, 100, 0);
     }
 
+    sendAvatar() {
+      if (!this.session || !this.session.send) return;
+      this.session.send({
+        k: 'avatar',
+        c: this.avatar.colors,
+        t: this.avatar.shirt
+      });
+    }
+
+    applyAvatar(rec) {
+      if (!rec || !rec.character || !rec.avatar) return;
+      if (rec.avatar.colors) rec.character.applyBodyColors(rec.avatar.colors);
+      if (rec.avatar.shirt) rec.character.applyTshirt(rec.avatar.shirt);
+    }
+
+    receiveAvatar(from, d) {
+      if (!from || from === this.selfId || this.avatarSeen.has(from)) return;
+      var profile = sanitizeAvatar(d);
+      if (!profile) return;
+      this.avatarSeen.add(from);
+      this.profiles.set(from, profile);
+      var rec = this.remotes.get(from);
+      if (rec) {
+        rec.avatar = profile;
+        this.applyAvatar(rec);
+      }
+      if (this.session.send) {
+        this.session.send({
+          k: 'avatar', id: from,
+          c: profile.colors, t: profile.shirt
+        });
+      }
+      this.sendProfilesTo(from);
+    }
+
+    sendProfilesTo(id) {
+      if (!this.session || !this.session.sendTo) return;
+      this.avatarReady.then(() => {
+        if (!this.active) return;
+        this.session.sendTo([id], {
+          k: 'avatar', id: this.selfId,
+          c: this.avatar.colors, t: this.avatar.shirt
+        });
+        for (var entry of this.profiles) {
+          if (entry[0] === id) continue;
+          this.session.sendTo([id], {
+            k: 'avatar', id: entry[0],
+            c: entry[1].colors, t: entry[1].shirt
+          });
+        }
+      }).catch(() => {});
+    }
+
+    applyAvatarMessage(d) {
+      if (!d || !d.id || d.id === this.selfId) return;
+      if (this.avatarSeen.has(d.id)) return;
+      var profile = sanitizeAvatar(d);
+      if (!profile) return;
+      this.avatarSeen.add(d.id);
+      this.profiles.set(d.id, profile);
+      var rec = this.remotes.get(d.id);
+      if (rec) {
+        rec.avatar = profile;
+        this.applyAvatar(rec);
+      }
+    }
+
     /* Create/remove remote avatars from the relay roster. The host also
      * owns a Humanoid per remote so it can simulate their input. */
     async syncRoster(players) {
@@ -116,10 +286,12 @@
             health: 100,
             alive: true,
             hasTarget: false,
+            avatar: null,
             input: { moveDir: new THREE.Vector3(), jump: false, climbAxis: 0 },
             lastInput: 0
           };
           this.remotes.set(p.id, rec);
+          rec.avatar = this.profiles.get(p.id) || null;
           this.loadRemote(rec).catch(err => {
             console.warn('[netgame] remote avatar failed: ' + (err && err.message));
           });
@@ -156,6 +328,7 @@
         rec.humanoid = new window.RBLXphysics.Humanoid(ch, this.world, { remote: true });
         rec.humanoid.onGround = false;
       }
+      if (rec.avatar) this.applyAvatar(rec);
     }
 
     disposeCharacter(ch) {
@@ -173,6 +346,9 @@
       var rec = this.remotes.get(id);
       if (!rec) return;
       this.remotes.delete(id);
+      this.profiles.delete(id);
+      this.avatarSeen.delete(id);
+      this.chatLog.delete(id);
       if (rec.character) this.disposeCharacter(rec.character);
     }
 
@@ -191,38 +367,73 @@
           rec.lastInput = performance.now();
         } else if (d.k === 'c') {
           this.hostChat(msg.from, d.text);
+        } else if (d.k === 'avatar') {
+          this.receiveAvatar(msg.from, d);
         }
         return;
       }
 
       if (d.k === 's') this.applySnapshot(d);
       else if (d.k === 'c') this.clientChat(d);
+      else if (d.k === 'who') {
+        this.avatarReady.then(() => {
+          if (this.active) this.sendAvatar();
+        }).catch(() => {});
+      } else if (d.k === 'avatar') {
+        this.applyAvatarMessage(d);
+      }
     }
 
     chat(text) {
       if (!this.active) return;
-      var clean = cleanChat(text);
-      if (!clean) return;
+      var result = filterChat(text);
+      if (!result.ok) {
+        if (this.ui && this.ui.notify) this.ui.notify(result.error);
+        return;
+      }
+      var now = performance.now();
+      if (this.chatAt && now - this.chatAt < 600) {
+        if (this.ui && this.ui.notify) this.ui.notify('Chat is rate-limited.');
+        return;
+      }
+      this.chatAt = now;
       if (this.mode === 'host') {
-        if (this.ui && this.ui.chat) this.ui.chat(clean, this.nameOf(this.selfId));
-        this.session.send({ k: 'c', from: this.selfId, text: clean });
+        if (this.ui && this.ui.chat) this.ui.chat(result.text, this.nameOf(this.selfId));
+        this.session.send({ k: 'c', from: this.selfId, text: result.text });
       } else {
-        this.session.send({ k: 'c', text: clean });
+        this.session.send({ k: 'c', text: result.text });
       }
     }
 
     hostChat(from, text) {
-      var clean = cleanChat(text);
-      if (!clean) return;
+      var now = performance.now();
+      var log = this.chatLog.get(from);
+      if (!log) {
+        log = { last: 0, times: [] };
+        this.chatLog.set(from, log);
+      }
+      if (log.last && now - log.last < 600) return;
+      log.times = log.times.filter(t => now - t < 5000);
+      if (log.times.length >= 5) return;
+
+      var result = filterChat(text);
+      if (!result.ok) return;
+
+      log.last = now;
+      log.times.push(now);
       var name = this.nameOf(from);
-      if (this.ui && this.ui.chat) this.ui.chat(clean, name);
-      this.session.send({ k: 'c', from: from, text: clean });
+      if (this.ui && this.ui.chat) this.ui.chat(result.text, name);
+      this.session.send({ k: 'c', from: from, text: result.text });
     }
 
     clientChat(d) {
-      var clean = cleanChat(d.text);
-      if (!clean) return;
-      if (this.ui && this.ui.chat) this.ui.chat(clean, this.nameOf(d.from));
+      var result = filterChat(d.text);
+      if (!result.ok) return;
+      var now = performance.now();
+      this.remoteChatTimes = this.remoteChatTimes.filter(t => now - t < 2000);
+      if (this.remoteChatTimes.length >= 8) return;
+      this.remoteChatTimes.push(now);
+      if (this.ui && this.ui.chat) this.ui.chat(result.text, this.nameOf(d.from));
     }
 
     step(dt, input, character, controller) {
@@ -349,10 +560,12 @@
             health: 100,
             alive: true,
             hasTarget: false,
+            avatar: null,
             input: { moveDir: new THREE.Vector3(), jump: false, climbAxis: 0 },
             lastInput: 0
           };
           this.remotes.set(e.i, rec);
+          rec.avatar = this.profiles.get(e.i) || null;
           this.loadRemote(rec).catch(err => {
             console.warn('[netgame] remote avatar failed: ' + (err && err.message));
           });

@@ -53,6 +53,10 @@ The current build enters the place as Host & Play: the host's browser
 runs the authoritative world, simulates every joined player's character,
 and sends snapshots through the relay. Joiners render remote avatars, chat,
 and predict their own movement; they do not run the place's server Scripts.
+Remote avatars carry the player's body colors and a small downscaled
+T-shirt. Chat is ASCII-only, capped at 100 characters, rate-limited and
+filtered with a starter profanity list. Usernames are capped at 20
+characters with ASCII letters/numbers, at most one space and one underscore.
 Tools, dynamic parts and place-script interactions across clients are the
 next stage. Hosting without playing (dedicated/headless) is also next.
 

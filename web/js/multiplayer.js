@@ -42,7 +42,9 @@
   }
 
   function clientName() {
-    return (window.RBLXplayer && window.RBLXplayer.name) || 'Player1';
+    var name = (window.RBLXplayer && window.RBLXplayer.name) || 'Player1';
+    if (window.RBLXnamepolicy) name = window.RBLXnamepolicy.sanitize(name);
+    return name;
   }
 
   function cleanPlayer(p) {

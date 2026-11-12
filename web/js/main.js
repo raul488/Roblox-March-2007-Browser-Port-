@@ -328,7 +328,8 @@ async function joinPlace(name, providedText, netOpts){
 /* --------------------------- PlaySolo.lua flow --------------------------- */
 async function spawn(parsed, netMode){
   if (character){ scene.remove(character.group); character=null; }
-  const name=(window.RBLXplayer&&window.RBLXplayer.name)||'Player1';
+  let name=(window.RBLXplayer&&window.RBLXplayer.name)||'Player1';
+  if (window.RBLXnamepolicy) name=window.RBLXnamepolicy.sanitize(name);
   character=new window.RBLXcharacter.Character(scene, world, name);
   world.character=character;
   firstPerson=false;      /* a respawn after a first-person death must re-hide the rig */
@@ -476,7 +477,13 @@ function bindInput(canvas){
       const t=ui.$chatInput.value.trim();
       if (t){
         if (netgame && netgame.chat) netgame.chat(t);
-        else ui.chat(t, (window.RBLXplayer&&window.RBLXplayer.name)||'Player1');   // name color auto from the mined classic palette
+        else {
+          var result = window.RBLXchatfilter
+            ? window.RBLXchatfilter.clean(t)
+            : { ok: true, text: t };
+          if (!result.ok) ui.notify(result.error);
+          else ui.chat(result.text, (character&&character.playerName)||'Player1');
+        }
       }
       ui.$chatInput.value='';
       ui.hideChatInput();

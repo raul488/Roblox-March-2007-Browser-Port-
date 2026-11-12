@@ -41,10 +41,27 @@ if (loginEl) loginEl.scrollTop=0;
 
 var nameInput=document.getElementById('userName');
 if (nameInput){
-  nameInput.value=window.RBLXplayer.name;
-  nameInput.addEventListener('input', function(){
-    window.RBLXplayer.name=nameInput.value.trim()||'Player1';
+  if (window.RBLXnamepolicy){
+    window.RBLXplayer.name=window.RBLXnamepolicy.sanitize(window.RBLXplayer.name);
     save();
+  }
+  nameInput.value=window.RBLXplayer.name;
+  function applyName(){
+    var raw=nameInput.value;
+    var clean=window.RBLXnamepolicy
+      ? window.RBLXnamepolicy.sanitize(raw, '')
+      : raw.replace(/[^A-Za-z0-9 _]/g,'').trim().slice(0,20);
+    if (nameInput.value!==clean) nameInput.value=clean;
+    window.RBLXplayer.name=clean||'Player1';
+    save();
+  }
+  nameInput.addEventListener('input', applyName);
+  nameInput.addEventListener('blur', function(){
+    if (!nameInput.value){
+      nameInput.value='Player1';
+      window.RBLXplayer.name='Player1';
+      save();
+    }
   });
 }
 

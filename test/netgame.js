@@ -42,6 +42,8 @@ class FakeCharacter {
   async load() { return this; }
   step() {}
   _drawTag() {}
+  applyBodyColors(colors) { this.bodyColors = colors; }
+  applyTshirt(url) { this.tshirt = url; }
 }
 
 class FakeHumanoid {
@@ -65,7 +67,9 @@ global.window = global;
 global.THREE = { Vector3: V3 };
 global.RBLXcharacter = { Character: FakeCharacter };
 global.RBLXphysics = { Humanoid: FakeHumanoid };
+global.BrickColorFromId = id => ({ id: id });
 global.location = { reload() {} };
+vm.runInThisContext(fs.readFileSync(path.join(__dirname, '../web/js/chatfilter.js'), 'utf8'));
 vm.runInThisContext(fs.readFileSync(path.join(__dirname, '../web/js/netgame.js'), 'utf8'));
 const NetGame = window.RBLXnetgame.NetGame;
 
@@ -115,6 +119,17 @@ async function main() {
   assert.ok(remote.character, 'host remote character did not load');
   assert.ok(remote.humanoid && remote.humanoid.remote, 'host remote humanoid missing');
 
+  hostSession.onMessage({
+    from: 'join',
+    d: {
+      k: 'avatar',
+      c: { head: 24, torso: 23, arms: 24, legs: 119 },
+      t: null
+    }
+  });
+  assert.strictEqual(remote.character.bodyColors.head, 24, 'host did not apply joiner colors');
+  assert.ok(hostSession.sent.some(m => m.k === 'avatar' && m.id === 'join'), 'host did not broadcast avatar');
+
   hostSession.onMessage({ from: 'join', d: { k: 'i', x: 1, z: 0, j: false, c: 0 } });
   const before = remote.character.group.position.x;
   host.step(1 / 60, { moveDir: new V3(), jump: false, climbAxis: 0 }, hostChar, null);
@@ -161,6 +176,17 @@ async function main() {
   const hostAvatar = client.remotes.get('host');
   assert.ok(hostAvatar.character, 'client host avatar did not load');
   assert.ok(hostAvatar.hasTarget, 'client host target missing');
+
+  const tinyPng = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+  clientSession.onMessage({
+    from: 'host',
+    d: {
+      k: 'avatar', id: 'host',
+      c: { head: 24, torso: 23, arms: 24, legs: 119 }, t: tinyPng
+    }
+  });
+  assert.strictEqual(hostAvatar.character.bodyColors.torso, 23, 'client did not apply host colors');
+  assert.strictEqual(hostAvatar.character.tshirt, tinyPng, 'client did not apply host T-shirt');
   assert.strictEqual(clientChar.group.position.x, 10, 'own-body correction did not snap');
   assert.strictEqual(clientChar.health, 80, 'own health did not update');
 

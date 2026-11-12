@@ -83,8 +83,10 @@ function imageFor(state){
 function sendPhrase(phrase){
   const game=window.RBLXnetgame&&window.RBLXnetgame.active;
   if (game&&game.chat){ game.chat(phrase); return; }
+  const clean=window.RBLXchatfilter?window.RBLXchatfilter.clean(phrase):{ok:true,text:phrase};
+  if (!clean.ok) return;
   const ui=window.RBLXui_instance_open;
-  if (ui&&ui.chat) ui.chat(phrase, (window.RBLXplayer&&window.RBLXplayer.name)||'Player1');
+  if (ui&&ui.chat) ui.chat(clean.text, (window.RBLXplayer&&window.RBLXplayer.name)||'Player1');
 }
 
 /* ---------- DOM chrome (browser only) ---------- */

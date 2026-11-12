@@ -8,7 +8,7 @@
  * ============================================================ */
 (function(){
   "use strict";
-  var n=70, label='host-play';
+  var n=71, label='chat-names';
   window.PORT_BUILD={ n:n, label:label };
   if (typeof document==='undefined' || typeof document.body==='undefined' || !document.body) return;
   var d=document.createElement('div');

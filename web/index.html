@@ -353,8 +353,10 @@ input{ cursor:text; }
     <div class="avatarCfg">
       <div class="cfgRow">
         <label for="userName">Username:</label>
-        <input id="userName" maxlength="20" spellcheck="false" placeholder="Player1">
+        <input id="userName" maxlength="20" spellcheck="false" placeholder="Player1"
+               title="20 characters max: letters, numbers, one space, one underscore.">
       </div>
+      <div class="cfgHint">Username: 20 characters max; letters and numbers; at most one space and one underscore.</div>
       <div class="partTabsRow">
         <div class="partTabs" id="bodyPartTabs"></div>
         <!-- Reset = the shipped character.rbxm rig again (js/startpage.js) -->
@@ -456,8 +458,10 @@ input{ cursor:text; }
 <script src="js/scriptport.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/safechat.js"></script>
+<script src="js/namepolicy.js"></script>
 <script src="js/startpage.js"></script>
 <script src="js/netconfig.js"></script>
+<script src="js/chatfilter.js"></script>
 <script src="js/multiplayer.js"></script>
 <script src="js/netgame.js"></script>
 <script src="places/index.js"></script>
