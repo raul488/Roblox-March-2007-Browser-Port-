@@ -46,7 +46,7 @@ https://relay.example.com wss://relay.example.com
 ```
 
 When the page is served from `localhost` or `127.0.0.1`, an empty config
-defaults to `http://127.0.0.1:8787` so the private relay can be tested
+defaults to `http://127.0.0.1:8788` so the private relay can be tested
 locally. Serve `web/` over HTTP (not `file://`) for local multiplayer.
 
 The current build wires the mode chooser, server browser and room handshake.

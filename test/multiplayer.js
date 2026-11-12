@@ -105,7 +105,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 
 async function main() {
   assert.ok(mp, 'multiplayer module missing');
-  assert.strictEqual(window.RBLX_NET_CONFIG.relay, 'http://127.0.0.1:8787');
+  assert.strictEqual(window.RBLX_NET_CONFIG.relay, 'http://127.0.0.1:8788');
 
   /* Play Solo still gets the old flow. */
   let solo = false;
