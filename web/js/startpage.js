@@ -16,7 +16,7 @@
 
 /* Defaults = the shipped character.rbxm rig: torso bc23 (Bright blue),
  * head/arms bc24 (Bright yellow), legs bc119 (Br. yellowish green). */
-var DEFAULTS={ name:'Player1', colors:{ head:24, torso:23, arms:24, legs:119 } };
+var DEFAULTS={ name:'Player1', colors:{ head:24, torso:23, arms:24, legs:119 }, face:null };
 
 try {
   var saved=JSON.parse(localStorage.getItem('RBLXstartpage')||'null');
@@ -157,61 +157,89 @@ if (resetBtn){
     click();
     window.RBLXplayer=JSON.parse(JSON.stringify(DEFAULTS));
     window.RBLXplayer.tshirt=null;
+    window.RBLXplayer.face=null;
     save();
     if (nameInput) nameInput.value=window.RBLXplayer.name;
     activePart='torso';
     render();
     renderShirt();
+    renderFaces();
   };
 }
 
-/* ------------------------------- T-shirt -------------------------------- */
-/* The 2006-early-2007 catalog T-shirts ship under content/tshirts (see
- * js/tshirts.js).  The start page stores the chosen path on
- * window.RBLXplayer.tshirt and every LoadCharacter applies it
- * (rbxenv syncShirts / character.applyTshirt). */
+/* --------------------------- face / T-shirt ---------------------------- */
+/* Faces and T-shirts are shipped images (js/faces.js, js/tshirts.js).  The
+ * chosen paths live on window.RBLXplayer and every LoadCharacter applies
+ * them (rbxenv syncFace/syncShirts, character.applyFace/applyTshirt). */
+var FACES=Array.isArray(window.RBLX_FACES)?window.RBLX_FACES:[];
 var SHIRTS=Array.isArray(window.RBLX_TSHIRTS)?window.RBLX_TSHIRTS:[];
+var faceShelf=document.getElementById('faceShelf');
 var shirtShelf=document.getElementById('tshirtShelf');
 
-function shirtExists(url){
-  for (var i=0;i<SHIRTS.length;i++) if (SHIRTS[i].src===url) return true;
+function assetExists(list,url){
+  for (var i=0;i<list.length;i++) if (list[i].src===url) return true;
   return false;
 }
-/* Old builds allowed arbitrary uploads; drop one from localStorage so the
- * shelf only ever offers shipped shirts. */
-if (window.RBLXplayer.tshirt && !shirtExists(window.RBLXplayer.tshirt)){
+/* Old builds allowed an arbitrary T-shirt upload; drop one from localStorage
+ * so the shelf only ever offers shipped assets. */
+if (window.RBLXplayer.tshirt && !assetExists(SHIRTS,window.RBLXplayer.tshirt)){
   window.RBLXplayer.tshirt=null;
   save();
 }
+if (window.RBLXplayer.face && !assetExists(FACES,window.RBLXplayer.face)){
+  window.RBLXplayer.face=null;
+  save();
+}
 
-function renderShirt(){
-  if (!shirtShelf) return;
-  var current=window.RBLXplayer.tshirt||null;
-  shirtShelf.innerHTML='';
-
-  function addItem(src,label,extra){
+function renderShelf(shelf,items,current,onPick){
+  if (!shelf) return;
+  shelf.innerHTML='';
+  for (var i=0;i<items.length;i++){
+    var it=items[i];
     var b=document.createElement('button');
     b.type='button';
-    b.className='tshirtItem'+(extra?' '+extra:'');
-    b.title=label;
-    b.setAttribute('aria-label',label);
-    b.setAttribute('aria-pressed', src===current ? 'true':'false');
-    if (src){
+    b.className='avatarShelfItem'+(it.text?' avatarShelfNone':'');
+    b.title=it.label;
+    b.setAttribute('aria-label',it.label);
+    b.setAttribute('aria-pressed', it.value===current ? 'true':'false');
+    if (it.preview){
       var img=document.createElement('img');
-      img.src=src;
+      img.src=it.preview;
       img.alt='';
       img.draggable=false;
       img.loading='lazy';
       b.appendChild(img);
     } else {
-      b.textContent='None';
+      b.textContent=it.text||'None';
     }
-    b.onclick=function(){ click(); setShirt(src); };
-    shirtShelf.appendChild(b);
+    b.onclick=(function(value){ return function(){ click(); onPick(value); }; })(it.value);
+    shelf.appendChild(b);
   }
+}
 
-  addItem(null,'No T-shirt (classic torso logo)');
-  for (var i=0;i<SHIRTS.length;i++) addItem(SHIRTS[i].src,SHIRTS[i].name);
+function renderFaces(){
+  if (!faceShelf) return;
+  var list=FACES||[];
+  var current=window.RBLXplayer.face||null;
+  var items=[{ value:null, label:'Classic face', preview:'content/textures/face.png' }];
+  for (var i=0;i<list.length;i++)
+    items.push({ value:list[i].src, label:list[i].name, preview:list[i].src });
+  renderShelf(faceShelf,items,current,setFace);
+}
+function setFace(src){
+  window.RBLXplayer.face=src||null;
+  save();
+  renderFaces();
+}
+
+function renderShirt(){
+  if (!shirtShelf) return;
+  var list=SHIRTS||[];
+  var current=window.RBLXplayer.tshirt||null;
+  var items=[{ value:null, label:'No T-shirt (classic torso logo)', text:'None' }];
+  for (var i=0;i<list.length;i++)
+    items.push({ value:list[i].src, label:list[i].name, preview:list[i].src });
+  renderShelf(shirtShelf,items,current,setShirt);
 }
 function setShirt(src){
   window.RBLXplayer.tshirt=src||null;
@@ -220,6 +248,7 @@ function setShirt(src){
 }
 /* the tabs block calls renderShirt() before the shelf element is wired, so
  * rebuild once here as well */
+renderFaces();
 renderShirt();
 
 /* ---------------------------- logo bounce ----------------------------- */

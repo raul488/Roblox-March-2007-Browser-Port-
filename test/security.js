@@ -71,12 +71,39 @@ require('vm').runInNewContext(
 const shirts=shirtCtx.window.RBLX_TSHIRTS;
 assert.ok(Array.isArray(shirts) && shirts.length >= 20, 'T-shirt shelf is empty');
 assert.ok(shirts.some(s => s.name === 'Matt Dusek Rox'), 'Matt Dusek Rox shirt missing');
+for (const name of ["Miked's Shirt", "PoliceModlers' Shirt", "Anaminus' Shirt",
+                    "Cadi's Shirt", "Cadi's Unused Shirt"]) {
+  assert.ok(shirts.some(s => s.name === name), 'Homestead shirt missing: ' + name);
+}
 for (const shirt of shirts) {
   assert.ok(/^content\/tshirts\/[a-z0-9-]+\.png$/.test(shirt.src),
     'unexpected T-shirt path: ' + shirt.src);
   assert.ok(fs.existsSync(path.join(root,'web',shirt.src)),
     'missing T-shirt texture: ' + shirt.src);
 }
+
+/* Face shelf: classic face plus the Homestead face textures. */
+assert.ok(/id="faceShelf"/.test(webIndex), 'Face shelf missing');
+assert.ok(webIndex.indexOf('js/faces.js') >= 0, 'faces.js is not loaded');
+assert.ok(webIndex.indexOf('<script src="js/faces.js">') <
+  webIndex.indexOf('<script src="js/startpage.js">'),
+  'faces.js must load before startpage.js');
+const faceCtx={window:{}};
+require('vm').runInNewContext(
+  fs.readFileSync(path.join(root,'web/js/faces.js'),'utf8'), faceCtx);
+const faces=faceCtx.window.RBLX_FACES;
+assert.ok(Array.isArray(faces) && faces.length === 4, 'Homestead face list is wrong');
+for (const name of ['Miked', 'Cadi', 'ToaZuku', 'PoliceModlers']) {
+  assert.ok(faces.some(f => f.name === name), 'Homestead face missing: ' + name);
+}
+for (const face of faces) {
+  assert.ok(/^content\/faces\/[a-z0-9-]+\.png$/.test(face.src),
+    'unexpected face path: ' + face.src);
+  assert.ok(fs.existsSync(path.join(root,'web',face.src)),
+    'missing face texture: ' + face.src);
+}
+assert.ok(fs.existsSync(path.join(root,'web/content/textures/face.png')),
+  'classic face texture missing');
 
 /* Do not ship unreferenced PE stubs under the served web root. */
 function walk(dir) {

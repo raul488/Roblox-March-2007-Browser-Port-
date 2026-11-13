@@ -56,7 +56,7 @@ html,body{ height:100%; margin:0; overflow:hidden; background:#7b9db7;
 body{ color:#111; }
 /* site body copy: Comic Sans MS Regular (comic.ttf)  descriptions,
  * blurbs and list rows; chat lines stay regular too */
-.subtitle,.tip,.cfgRow label,.tshirtLabel,.cfgHint,#openFile,
+.subtitle,.tip,.cfgRow label,.avatarLabel,.cfgHint,#openFile,
 .pl,.chatLine,.tool span,#chatLog{ font-weight:normal; }
 /* nav buttons/title headers + in-game hints/banners/modals:
  * bold forced via font-weight (comicbd.ttf), the 2007 site's trick */
@@ -126,21 +126,21 @@ canvas.viewport{ display:block; width:100%; height:100%; }
              -webkit-user-drag:none; }
 .dlCta{ display:block; margin:16px auto 0; max-width:100%; height:auto; border:0; padding:0;
         background:none; cursor:pointer; -webkit-user-drag:none; }
-/* T-shirt picker (ShirtGraphic.TextureId)  same chrome as the color rows */
-.tshirtRow{ display:flex; align-items:center; gap:8px; margin-top:10px; }
-.tshirtLabel{ font-size:12px; color:#425d75; white-space:nowrap; }
+/* Avatar accessory shelves (face + T-shirt)  same chrome as the color rows */
+.avatarRow{ display:flex; align-items:center; gap:8px; margin-top:10px; }
+.avatarLabel{ font-size:12px; color:#425d75; white-space:nowrap; }
 .tshirtBtn{ font-size:11.5px; padding:3px 9px; border:1px solid #a4b2c0; color:#345; cursor:pointer;
             background:linear-gradient(#fdfdfd,#dde6f0); font-family:inherit; }
 .tshirtBtn:hover{ background:#dcebfb; }
-.tshirtShelf{ display:flex; gap:6px; overflow-x:auto; padding:4px 2px 8px; margin-top:2px;
+.avatarShelf{ display:flex; gap:6px; overflow-x:auto; padding:4px 2px 8px; margin-top:2px;
               scrollbar-color:#a4b2c0 #e6edf4; }
-.tshirtItem{ flex:0 0 62px; width:62px; height:62px; padding:3px; box-sizing:border-box;
+.avatarShelfItem{ flex:0 0 62px; width:62px; height:62px; padding:3px; box-sizing:border-box;
              border:1px solid #a4b2c0; background:linear-gradient(#fdfdfd,#dde6f0);
              cursor:pointer; display:flex; align-items:center; justify-content:center; }
-.tshirtItem img{ width:100%; height:100%; object-fit:contain; image-rendering:auto; }
-.tshirtItem:hover{ background:#dcebfb; }
-.tshirtItem[aria-pressed="true"]{ border:2px solid #316ac5; padding:2px; background:#cfe2fa; }
-.tshirtNone{ font-family:inherit; font-size:10px; color:#425d75; }
+.avatarShelfItem img{ width:100%; height:100%; object-fit:contain; image-rendering:auto; }
+.avatarShelfItem:hover{ background:#dcebfb; }
+.avatarShelfItem[aria-pressed="true"]{ border:2px solid #316ac5; padding:2px; background:#cfe2fa; }
+.avatarShelfNone{ font-family:inherit; font-size:10px; color:#425d75; }
 /* 2007 client chrome.  The toolbar labels are the client's own button
  * strings ("Toolbox", "Edit Mode", "Help...", "Fullscreen", "Exit" are
  * contiguous in Roblox.exe at 0x3bc2e0..0x3bc2c4).  The five 100px
@@ -375,13 +375,19 @@ input{ cursor:text; }
       </div>
       <div class="swatches" id="bodySwatches"></div>
       <div class="cfgHint" id="bodyCfgHint">Pick a body part, then a brick color  applied to your character on join.</div>
+      <!-- Face: the classic smiley plus the custom Homestead contest faces. -->
+      <div class="avatarRow">
+        <span class="avatarLabel">Face:</span>
+        <span class="cfgHint">Classic + Homestead winners</span>
+      </div>
+      <div class="avatarShelf" id="faceShelf" aria-label="Face inventory"></div>
       <!-- T-shirt (decomp ShirtGraphic.TextureId): the 2006-early-2007
            catalog shirts, all free. Horizontal shelf under the body colors. -->
-      <div class="tshirtRow">
-        <span class="tshirtLabel">T-Shirt:</span>
+      <div class="avatarRow">
+        <span class="avatarLabel">T-Shirt:</span>
         <span class="cfgHint">All free  click to wear</span>
       </div>
-      <div class="tshirtShelf" id="tshirtShelf" aria-label="T-shirt inventory"></div>
+      <div class="avatarShelf" id="tshirtShelf" aria-label="T-shirt inventory"></div>
     </div>
     <div class="tip">
       Or drag a 2007-era <b>.rbxlx/.rbxm</b> XML file here.<br>
@@ -466,6 +472,7 @@ input{ cursor:text; }
 <script src="js/ui.js"></script>
 <script src="js/safechat.js"></script>
 <script src="js/namepolicy.js"></script>
+<script src="js/faces.js"></script>
 <script src="js/tshirts.js"></script>
 <script src="js/safewords.js"></script>
 <script src="js/chatfilter.js"></script>

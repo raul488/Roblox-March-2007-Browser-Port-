@@ -1972,6 +1972,14 @@ function syncShirts(){
   ch.applyTshirt(url);
 }
 
+/* The start-page face is the rig's default head Decal; there is no 2007
+ * Face instance to override it, so a fresh rig just applies the stored URL. */
+function syncFace(){
+  const ch=char();
+  if (ch&&ch.applyFace)
+    ch.applyFace((window.RBLXplayer&&window.RBLXplayer.face)||null);
+}
+
 /* parented into the workspace subtree  bring it (and children) to life.
  * Parts first (engine ordering), then scripts/messages/explosions. */
 function attachToWorld(inst){
@@ -3130,6 +3138,7 @@ function setCharacter(ch){
   /* the fresh rig re-applies the start-page T-shirt (any ShirtGraphic
    * parented later overrides it  syncShirts) */
   syncShirts();
+  syncFace();
   applyTeamVisuals();
 }
 
@@ -3607,6 +3616,7 @@ function launchPlaceScripts(onUnsupported){
 window.RBLXenv={
   state,
   forPlace, setCharacter, fireStepped, launchPlaceScripts,
+  syncFace,
   firePlayerAdded, firePlayerChanged, tickScripts,
   launchScript, instanceNew, spawnFromXml,
   wrap, unwrap, viewLook, rebuild:attachToWorld,

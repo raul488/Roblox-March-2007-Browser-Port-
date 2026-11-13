@@ -238,6 +238,7 @@ class Character {
         plane.position.set(0, py, z);
         plane.rotation.y=Math.PI;
         mesh.add(plane);
+        if (part.props.Name==='Head') this.headDecal=plane;
       } else {
         // torso graphic plane on the box front (-Z).  The default decal IS
         // the classic T-shirt slot (the shipped rig's torso logo); a
@@ -281,6 +282,30 @@ class Character {
     this.torsoDecal.material.transparent=true;
     this.torsoDecal.material.needsUpdate=true;
     this.torsoDecal.visible=true;
+  }
+
+  /* ---- custom head face ------------------------------------------------
+   * The shipped face is a Decal on the Head; a chosen face replaces only its
+   * texture.  null restores the rig's classic face.  Used by the start-page
+   * face shelf and by remote avatar profiles. */
+  applyFace(url){
+    if (!this.headDecal) return;
+    if (!url){
+      if (this._defaultHeadTex!=null){
+        this.headDecal.material.map=this._defaultHeadTex;
+        this.headDecal.material.needsUpdate=true;
+        this.headDecal.visible=true;
+      }
+      this.faceUrl=null;
+      return;
+    }
+    if (!this._defaultHeadTex) this._defaultHeadTex=this.headDecal.material.map;
+    this.faceUrl=url;
+    const map=window.RBLXworld.mkTex(url);
+    this.headDecal.material.map=map;
+    this.headDecal.material.transparent=true;
+    this.headDecal.material.needsUpdate=true;
+    this.headDecal.visible=true;
   }
 
   /* Overhead tag  name plus, when damaged, the decomp's billboard health

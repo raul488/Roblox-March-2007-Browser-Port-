@@ -1,6 +1,21 @@
 /* Classic Roblox T-shirts (2006-early 2007 catalog textures).
- * Textures from the Roblox Wiki catalog pages; see AGENTS.md. */
+ * Textures from the Roblox Wiki catalog pages; see AGENTS.md.
+ * The first ten entries are the custom shirts recovered from the January
+ * 2007 Homestead Furniture Making Contest avatars.  Asset IDs: Miked
+ * 1000022, PoliceModlers 1316090, ToaZuku 1004046, MrDoomBringer 7510129917,
+ * Anaminus 1001936, Rocks25 7520577426, Cadi 8514082055, Koopa 1026266,
+ * DrWaffles 8642429538; Cadi's unused shirt is from the Wiki extraction. */
 window.RBLX_TSHIRTS = [
+  { id: 'homestead-miked', name: "Miked's Shirt", src: 'content/tshirts/miked-shirt.png' },
+  { id: 'homestead-police-modlers', name: "PoliceModlers' Shirt", src: 'content/tshirts/police-modlers-shirt.png' },
+  { id: 'homestead-toazuku', name: "ToaZuku's Shirt", src: 'content/tshirts/toazuku-shirt.png' },
+  { id: 'homestead-mrdoombringer', name: "MrDoomBringer's Shirt", src: 'content/tshirts/mrdoombringer-shirt.png' },
+  { id: 'homestead-anaminus', name: "Anaminus' Shirt", src: 'content/tshirts/anaminus-shirt.png' },
+  { id: 'homestead-rocks25', name: "Rocks25's Shirt", src: 'content/tshirts/rocks25-shirt.png' },
+  { id: 'homestead-cadi', name: "Cadi's Shirt", src: 'content/tshirts/cadi-shirt.png' },
+  { id: 'homestead-koopa', name: "Koopa's Shirt", src: 'content/tshirts/koopa-shirt.png' },
+  { id: 'homestead-drwaffles', name: "DrWaffles' Shirt", src: 'content/tshirts/drwaffles-shirt.png' },
+  { id: 'homestead-cadi-unused', name: "Cadi's Unused Shirt", src: 'content/tshirts/cadi-unused-shirt.png' },
   { id: '1-robuk-shirt', name: '1 ROBUK Shirt', src: 'content/tshirts/1-robuk-shirt.png' },
   { id: 'ballerina', name: 'Ballerina', src: 'content/tshirts/ballerina.png' },
   { id: 'big-smilie', name: 'Big Smilie', src: 'content/tshirts/big-smilie.png' },

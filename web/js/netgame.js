@@ -84,8 +84,16 @@
         pngSizeOk(d.t)) {
       shirt = d.t;
     }
-    if (!Object.keys(colors).length && !shirt) return null;
-    return { colors: colors, shirt: shirt };
+    var face = curatedFace(d.f);
+    if (!Object.keys(colors).length && !shirt && !face) return null;
+    return { colors: colors, shirt: shirt, face: face };
+  }
+
+  /* Faces are shipped files; only the curated Homestead/gallery paths may
+   * cross the wire (no URLs or traversal). */
+  function curatedFace(url) {
+    return (typeof url === 'string' &&
+      /^content\/faces\/[a-z0-9-]+\.png$/.test(url)) ? url : null;
   }
 
   /* Only accept a small PNG with sane dimensions from the network. Normal
@@ -192,7 +200,11 @@
       this.netCreateWin = null;
 
       var localPlayer = window.RBLXplayer || {};
-      this.avatar = { colors: readColors(localPlayer.colors), shirt: null };
+      this.avatar = {
+        colors: readColors(localPlayer.colors),
+        shirt: null,
+        face: curatedFace(localPlayer.face)
+      };
       this.avatarReady = shrinkShirt(localPlayer.tshirt).then(url => {
         this.avatar.shirt = url;
       });
@@ -380,7 +392,8 @@
       this.session.send({
         k: 'avatar',
         c: this.avatar.colors,
-        t: this.avatar.shirt
+        t: this.avatar.shirt,
+        f: this.avatar.face
       });
     }
 
@@ -388,6 +401,7 @@
       if (!rec || !rec.character || !rec.avatar) return;
       if (rec.avatar.colors) rec.character.applyBodyColors(rec.avatar.colors);
       if (rec.avatar.shirt) rec.character.applyTshirt(rec.avatar.shirt);
+      if (rec.character.applyFace) rec.character.applyFace(rec.avatar.face || null);
     }
 
     receiveAvatar(from, d) {
@@ -405,7 +419,7 @@
       if (this.session.send) {
         this.session.send({
           k: 'avatar', id: from,
-          c: profile.colors, t: profile.shirt
+          c: profile.colors, t: profile.shirt, f: profile.face
         });
       }
       this.sendProfilesTo(from);
@@ -417,13 +431,13 @@
         if (!this.active) return;
         this.session.sendTo([id], {
           k: 'avatar', id: this.selfId,
-          c: this.avatar.colors, t: this.avatar.shirt
+          c: this.avatar.colors, t: this.avatar.shirt, f: this.avatar.face
         });
         for (var entry of this.profiles) {
           if (entry[0] === id) continue;
           this.session.sendTo([id], {
             k: 'avatar', id: entry[0],
-            c: entry[1].colors, t: entry[1].shirt
+            c: entry[1].colors, t: entry[1].shirt, f: entry[1].face
           });
         }
       }).catch(() => {});

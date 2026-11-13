@@ -44,6 +44,7 @@ class FakeCharacter {
   _drawTag() {}
   applyBodyColors(colors) { this.bodyColors = colors; }
   applyTshirt(url) { this.tshirt = url; }
+  applyFace(url) { this.face = url; }
   setToolVisual(binType) { this.toolVisual = binType; }
   setTagColor(css) { this.tagColor = css; }
   respawn() {
@@ -211,11 +212,14 @@ async function main() {
     from: 'host',
     d: {
       k: 'avatar', id: 'host',
-      c: { head: 24, torso: 23, arms: 24, legs: 119 }, t: tinyPng
+      c: { head: 24, torso: 23, arms: 24, legs: 119 }, t: tinyPng,
+      f: 'content/faces/miked-face.png'
     }
   });
   assert.strictEqual(hostAvatar.character.bodyColors.torso, 23, 'client did not apply host colors');
   assert.strictEqual(hostAvatar.character.tshirt, tinyPng, 'client did not apply host T-shirt');
+  assert.strictEqual(hostAvatar.character.face, 'content/faces/miked-face.png',
+    'client did not apply host face');
   assert.strictEqual(clientChar.group.position.x, 10, 'own-body correction did not snap');
   assert.strictEqual(clientChar.health, 80, 'own health did not update');
 

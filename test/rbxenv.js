@@ -251,4 +251,29 @@ touchChar.group.position.y=3;               /* re-enter */
 E.fireStepped(1/60); L.sched.tick(0);
 assert.strictEqual(padEnv.G.get('hits'),2);
 
+/* The start-page face is applied through the bridge on spawn. */
+const faceCalls=[];
+E.state.character={ applyFace(url){ faceCalls.push(url); } };
+window.RBLXplayer={ face:'content/faces/miked-face.png' };
+E.syncFace();
+assert.deepStrictEqual(faceCalls,['content/faces/miked-face.png']);
+window.RBLXplayer.face=null;
+E.syncFace();
+assert.deepStrictEqual(faceCalls,['content/faces/miked-face.png',null]);
+E.state.character=null;
+
+/* Character.applyFace swaps only the Head decal and restores the shipped
+ * face when passed null. */
+vm.runInThisContext(fs.readFileSync(path.join(__dirname,'../web/js/character.js'),'utf8'));
+const faceCh=Object.create(window.RBLXcharacter.Character.prototype);
+const defaultTex={ name:'classic' };
+faceCh.headDecal={ material:{ map:defaultTex } };
+window.RBLXworld={ mkTex:url=>({ name:url }) };
+faceCh.applyFace('content/faces/miked-face.png');
+assert.strictEqual(faceCh.headDecal.material.map.name, 'content/faces/miked-face.png');
+assert.strictEqual(faceCh.faceUrl, 'content/faces/miked-face.png');
+faceCh.applyFace(null);
+assert.strictEqual(faceCh.headDecal.material.map, defaultTex);
+assert.strictEqual(faceCh.faceUrl, null);
+
 console.log('ALL RBXENV TESTS PASSED');
