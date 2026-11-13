@@ -512,9 +512,10 @@ function buildFace(size, scl){
     // the front-face angular span; +X stays on the texture's u=0 side.
     let u=0.5 - 0.6*nor[i*3];
     if (u<0) u=0; else if (u>1) u=1;
-    // Vertical tile from FUN_004e13d0: 0.25 start, 0.5 span.  No texture crop.
+    // Vertical tile from FUN_004e13d0: 0.5 span, shifted to center the
+    // shipped face.png art (visible pixels center at v=0.5234, not 0.5).
     uv[i*2]   = u;
-    uv[i*2+1] = 0.25 + 0.5 * ((pos[i*3+1]-minY)/ry);
+    uv[i*2+1] = 0.2734375 + 0.5 * ((pos[i*3+1]-minY)/ry);
   }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos.slice(), 3));
