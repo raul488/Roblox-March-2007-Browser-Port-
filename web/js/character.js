@@ -65,9 +65,8 @@ const R6_JOINT={
   'Left Leg': {x:-0.5, y:-1,  z:0},
 };
 
-/* The shipped face.png has a wide transparent border; the client's front
- * surface samples the 0.25..0.75 vertical tile, which is applied by
- * headmesh.buildFace().  Custom face assets use the same face UV tile. */
+/* The face decal wraps on the generated HeadMesh; headmesh.buildFace()
+ * supplies the UVs.  The shipped face.png is used as-is. */
 
 class Character {
   constructor(scene, world, playerName){

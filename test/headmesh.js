@@ -48,12 +48,11 @@ for (let i=0;i<idx.length;i++){
 }
 assert.ok(seen >= 480, 'front patch is too small');
 assert.ok(minU >= -1e-6 && maxU <= 1+1e-6, 'u outside 0..1');
-assert.ok(minV >= 0.25-1e-6 && maxV <= 0.75+1e-6, 'v outside the decomp 0.25..0.75 face tile');
-assert.ok(maxU-minU > 0.9 && maxV-minV > 0.49, 'UVs do not span the face');
+assert.ok(minV >= -1e-6 && maxV <= 1+1e-6, 'v outside 0..1');
+assert.ok(maxU-minU > 0.9 && maxV-minV > 0.9, 'UVs do not span the face');
 assert.strictEqual(face.dim.x, 1.25);
 
-/* Front-facing (-Z) orientation: +X is screen-left (u=0), top is v=0.75,
- * bottom is v=0.25 (the decomp front-surface tile). */
+/* Front-facing (-Z) orientation: +X is screen-left (u=0), top is v=1. */
 let leftU=null,rightU=null,topV=null,bottomV=null;
 const pos=face.geo.attributes.position.array;
 for (let i=0;i<idx.length;i++){
@@ -65,7 +64,7 @@ for (let i=0;i<idx.length;i++){
 }
 assert.ok(Math.abs(leftU.u) < 1e-6, '+X should map to u=0');
 assert.ok(Math.abs(rightU.u-1) < 1e-6, '-X should map to u=1');
-assert.ok(Math.abs(topV.v-0.75) < 1e-6, 'top should map to v=0.75');
-assert.ok(Math.abs(bottomV.v-0.25) < 1e-6, 'bottom should map to v=0.25');
+assert.ok(Math.abs(topV.v-1) < 1e-6, 'top should map to v=1');
+assert.ok(Math.abs(bottomV.v) < 1e-6, 'bottom should map to v=0');
 
 console.log('ALL HEADMESH TESTS PASSED');

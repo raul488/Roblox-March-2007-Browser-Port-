@@ -510,10 +510,8 @@ function buildFace(size, scl){
   for (let i=0; i<used.length; i++){
     if (!used[i]) continue;
     // Facing the -Z side: +X is screen-left, so u runs from +X to -X.
-    // The decomp front-surface builder (FUN_004e13d0, default flags 0) starts
-    // at 0.25 and spans 0.5 vertically, which is the classic tall face.
     uv[i*2]   = (maxX-pos[i*3])/rx;
-    uv[i*2+1] = 0.25 + 0.5 * ((pos[i*3+1]-minY)/ry);
+    uv[i*2+1] = (pos[i*3+1]-minY)/ry;
   }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos.slice(), 3));
