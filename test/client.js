@@ -75,4 +75,8 @@ assert.ok(/head\.pivot\.getWorldPosition/.test(character) && /_tagV\.y \+= 1\.5/
 assert.ok(/fillText\(name, x, y\)/.test(character) && /textBaseline='bottom'/.test(character),
   'tag name must be screen-space, centred and bottom-aligned');
 
+/* Torso T-shirt/logo decal must cover the whole front face. */
+assert.ok(/const w=size\.x, h=size\.y, z=-\(size\.z\*0\.5\+0\.012\)/.test(character),
+  'torso decal plane must span the full face (no 0.92 brick border)');
+
 console.log('ALL client visual assertions PASSED');

@@ -267,8 +267,10 @@ class Character {
       } else {
         // torso graphic plane on the box front (-Z).  The shipped torso logo
         // is the classic T-shirt slot (applyTshirt); rotation.y=PI faces
-        // front and reads un-mirrored.
-        const w=size.x*0.92, h=size.y*0.92, z=-(size.z*0.5+0.012);
+        // front and reads un-mirrored.  A Decal maps over the WHOLE face, so
+        // the plane is full-size (the old 0.92 left a brick border around
+        // full-coverage shirts such as camo/cat-suit).
+        const w=size.x, h=size.y, z=-(size.z*0.5+0.012);
         const plane=new THREE.Mesh(
           new THREE.PlaneGeometry(w, h),
           new THREE.MeshLambertMaterial({ map:window.RBLXworld.mkTex(url), transparent:true }));

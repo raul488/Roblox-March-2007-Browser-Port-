@@ -8,7 +8,7 @@
  * ============================================================ */
 (function(){
   "use strict";
-  var n=105, label='hud3';
+  var n=106, label='shirt';
   window.PORT_BUILD={ n:n, label:label };
   if (typeof document==='undefined' || typeof document.body==='undefined' || !document.body) return;
   var d=document.createElement('div');
