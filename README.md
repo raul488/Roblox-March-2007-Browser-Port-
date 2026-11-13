@@ -33,73 +33,68 @@ for shirts. Old data-URL shirts saved by earlier builds are cleared on load.
 
 ## Multiplayer
 
-Multiplayer is a peer-hosted listen server: one player's browser runs the
-room, everyone else joins through a private relay. The relay keeps the room
-list, enforces the 16-player cap, and routes messages; it never exposes a
-player's IP to another player. A modified host can still cheat its own room.
-Joiners predict locally and reconcile against the host's last processed
-input, so normal latency does not rubber-band their own character; remote
-avatars glide toward the newest snapshot instead of jumping.
+Multiplayer uses a peer-hosted listen server. One player's browser runs the
+room; other players join through a private relay. The relay keeps the room
+list, enforces the 16-player cap, and routes messages. It does not expose
+player IP addresses to other players. A modified host can still cheat its
+own room, and the relay cannot verify that host's filtering.
+
+Joiners predict their own movement and correct against the host's
+acknowledged input, so latency does not snap them back. Remote avatars
+interpolate toward the latest snapshot.
 
 The client is configured in `web/js/netconfig.js`:
 ```js
 window.RBLX_RELAY_URL = 'https://relay.example.com';
 ```
 
-This build ships pointed at the Tailscale Funnel relay
+This build points at the Tailscale Funnel relay
 `https://desktop-33lh8ah.tail4210dd.ts.net`.
 
-Then add the same relay origins to the `connect-src` directive in
-`web/index.html`:
+Add the relay origins to the `connect-src` directive in `web/index.html`:
 
 ```text
 https://relay.example.com wss://relay.example.com
 ```
 
-When the page is served from `localhost` or `127.0.0.1`, an empty config
-defaults to `http://127.0.0.1:8788` so the private relay can be tested
-locally. Serve `web/` over HTTP (not `file://`) for local multiplayer.
+On `localhost` or `127.0.0.1`, an empty config defaults to
+`http://127.0.0.1:8788` for local testing. Serve `web/` over HTTP, not
+`file://`, for local multiplayer.
 
-The current build enters the place as Host & Play: the host's browser
-runs the authoritative world, simulates every joined player's character,
-and sends snapshots through the relay. Joiners render remote avatars, chat,
-and predict their own movement; they do not run the place's server Scripts.
-Remote avatars carry the player's body colors and a small downscaled
-T-shirt. Chat is ASCII-only, capped at 100 characters, rate-limited and
-filtered with an expanded profanity/slur list that sees through spaces,
-punctuation, leetspeak, inserted digits and doubled letters. The chat bar
-also has a per-player **Safe Chat** toggle: when it is on, the typed box is
-disabled and only phrases from the shipped Super Safe Chat tree can be
-sent or displayed (received text is validated against that exact phrase
-list). The setting persists locally. Obvious slurs are not merely masked:
-the sender is muted for a minute and the centre message box says **Stop**.
-Usernames go through the same filter at commit time (a filtered name falls
-back to `Player1`), while live typing only strips illegal characters so
-words like `assassin` can still be entered.
-Usernames are capped at 20 characters
-with ASCII letters/numbers, at most one space and one underscore.
+In Host & Play, the host's browser runs the authoritative world and
+simulates every joined character. Joiners render remote avatars, chat, and
+predict their own movement. They do not run the place's server Scripts.
+Remote avatars use the player's body colors and a downscaled T-shirt.
 
-The relay sees room names, display names, chat, avatars and game state; it
-does not put player IP addresses into the protocol or room list. A T-shirt
-you choose is shared with the players in your room. A modified host can
-cheat its own room; the relay cannot verify the host's game filtering.
+Chat is ASCII-only, capped at 100 characters, rate-limited, and filtered for
+profanity and slurs, including spaces, punctuation, leetspeak, inserted
+digits, and doubled letters. A per-player Safe Chat toggle disables typing
+and allows only exact phrases from the shipped Super Safe Chat tree; received
+messages are checked against that list. The setting persists. Obvious slurs
+mute the sender for one minute.
+
+Usernames are filtered when committed; a filtered name falls back to
+`Player1`. Live typing only strips illegal characters, so `assassin` can
+still be entered. Names are capped at 20 characters with ASCII
+letters/numbers, at most one space and one underscore.
+
+The relay sees room names, display names, chat, avatars, and game state. A
+T-shirt you choose is shared with the players in your room.
 
 Host changes replicate to joiners: tool-created and moving parts, grabbed
-bricks, beacon/regen geometry, explosions, and place-script Touched events
-(so remote players trigger jumppads and beacons). Remote characters are
-also carried by the moving assembly they stand on. Joiners can use the
-built-in BinTypes 1–7 through host-side proxy managers (rocket, slingshot,
-laser, GameTool/Grab, clone, hammer); custom BinType 0 Lua gear remains
+bricks, beacon and regen geometry, explosions, and place-script Touched
+events, so remote players trigger jumppads and beacons. Remote characters
+are carried by the moving assembly they stand on. Joiners can use the
+built-in BinTypes 1-7 through host-side proxy managers: rocket, slingshot,
+laser, GameTool/Grab, clone, and hammer. Custom BinType 0 Lua gear remains
 host-only.
 
-**Host (No Player)** creates the same room without a local character, for
-running a dedicated room in a browser tab. It still needs the tab open and
-visible (browsers pause background-tab animation); a native headless server
-is not implemented. Duplicate display names get a numeric suffix (`Alice`,
-`Alice2`); the chat filter uses the expanded starter word list. When the
-place ships a Teams service, players are assigned to the fewest-member team
-and the overhead tag/player list take that team colour, replicated by the
-snapshot.
+Host (No Player) creates a room without a local character. The tab must stay
+open and visible because browsers pause background tabs; there is no native
+headless server. Duplicate display names get a numeric suffix (`Alice`,
+`Alice2`). When the place has a Teams service, the host assigns players to
+the team with the fewest members, and the snapshot replicates team colors to
+name tags and the player list.
 
 ## Content and trust
 
