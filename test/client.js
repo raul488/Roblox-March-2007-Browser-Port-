@@ -39,10 +39,12 @@ has('healthHud','top:200px','right:60px');
 has('healthBar','width:10px','height:100px');
 has('healthLabel','position:absolute','font-size:18px','font-weight:400','color:#0000ff','margin-top:7px');
 
-/* The safe chat bubble sits at the left end of the typed-chat bar; the
- * chat fold itself is left as-is. */
-has('safeChatBtn','left:0','bottom:4px');
-has('safeChatPanel','left:0','bottom:32px');
+/* The safe chat bubble sits above the inventory strip, not in the chat
+ * bar: the hotbar is 28+96=124px tall, the bubble 32x23 at bottom 130. */
+has('safeChatBtn','left:8px','bottom:130px');
+has('safeChatPanel','left:6px','bottom:158px');
+has('hotbar','bottom:28px');
+assert.ok(130 >= 28+96, 'safe chat bubble must clear the 96px inventory strip');
 
 /* Hint (FUN_005ddff0): full-width black bar at the bottom of the viewport. */
 has('hintBox','left:0','right:0','bottom:28px','height:20px','background:#000','font-size:14px','font-weight:400');
