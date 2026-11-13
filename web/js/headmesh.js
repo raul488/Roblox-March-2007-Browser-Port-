@@ -478,21 +478,11 @@ function build(size, scl){
   return { geo:g, dim:{ x:sx, y:sy, z:sz } };
 }
 
-/* Face decal patch: the front-facing triangles of the same HeadMesh, with
- * UVs derived from their x/y position.  Mapping the texture onto the real
- * rounded surface makes it wrap like the 2007 Decal instead of floating in
- * front as a flat square.  The face is the -Z side (NormalId Front=5). */
-/* Face vertical tile.  The default 0.5-span window is centered on the
- * shipped face.png art (visible pixels center v=0.5234).  Profiles in
- * faces.js can override the window for non-square custom art. */
-const FACE_V0=0.2734375, FACE_VS=0.5;
-function faceV(baseV, profile){
-  const start=(profile&&profile.vStart!=null)?profile.vStart:FACE_V0;
-  const span=(profile&&profile.vSpan!=null)?profile.vSpan:FACE_VS;
-  return start + span*baseV;
-}
-
-function buildFace(size, scl){
+/* Face decal patch: the front-facing triangles of the same HeadMesh.
+ * U normally follows the rounded front-surface normal; a profile can use the
+ * linear x mapping instead.  V is a 0.5 tile centered on face.png's visible
+ * pixels, with optional per-texture overrides for non-square custom art. */
+function buildFace(size, scl, profile){
   const b=build(size, scl);
   const src=b.geo;
   const pos=src.attributes.position.array;
@@ -508,24 +498,28 @@ function buildFace(size, scl){
     }
   }
   if (!outIdx.length) return null;
-  let minY=Infinity,maxY=-Infinity;
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
   for (let i=0; i<used.length; i++){
     if (!used[i]) continue;
-    const y=pos[i*3+1];
+    const x=pos[i*3], y=pos[i*3+1];
+    if (x<minX) minX=x; if (x>maxX) maxX=x;
     if (y<minY) minY=y; if (y>maxY) maxY=y;
   }
-  const ry=(maxY-minY)||1;
+  const rx=(maxX-minX)||1, ry=(maxY-minY)||1;
+  const useX=profile&&profile.uMode==='x';
+  const v0=profile&&profile.vStart!=null?profile.vStart:0.2734375;
+  const vs=profile&&profile.vSpan!=null?profile.vSpan:0.5;
   const uv=new Float32Array(used.length*2);
-  const baseV=new Float32Array(used.length);
   for (let i=0; i<used.length; i++){
     if (!used[i]) continue;
-    // U follows the rounded front surface (normal.x), not raw x.  This is
-    // the front-face angular span; +X stays on the texture's u=0 side.
-    let u=0.5 - 0.6*nor[i*3];
-    if (u<0) u=0; else if (u>1) u=1;
-    baseV[i]=(pos[i*3+1]-minY)/ry;
+    let u;
+    if (useX) u=(maxX-pos[i*3])/rx;
+    else {
+      u=0.5 - 0.6*nor[i*3];
+      if (u<0) u=0; else if (u>1) u=1;
+    }
     uv[i*2]   = u;
-    uv[i*2+1] = faceV(baseV[i], null);
+    uv[i*2+1] = v0 + vs*((pos[i*3+1]-minY)/ry);
   }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos.slice(), 3));
@@ -533,9 +527,8 @@ function buildFace(size, scl){
   g.setAttribute('uv',       new THREE.BufferAttribute(uv, 2));
   g.setIndex(new THREE.BufferAttribute(new Uint16Array(outIdx), 1));
   g.computeBoundingSphere();
-  g.userData.faceBaseV=baseV;
   return { geo:g, dim:b.dim };
 }
 
-window.RBLXheadMesh = { P, N, I, build, buildFace, faceV, FACE_V0, FACE_VS };
+window.RBLXheadMesh = { P, N, I, build, buildFace };
 })();

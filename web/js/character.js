@@ -259,7 +259,10 @@ class Character {
         }
         if (part.props.Name==='Head'){
           this.headDecal=decal;
-          this._faceBaseV=patch?patch.geo.userData.faceBaseV:null;
+          if (patch){
+            this.headSize=size;
+            this.headScale=scale;
+          }
         }
       } else {
         // torso graphic plane on the box front (-Z).  The default decal IS
@@ -310,14 +313,13 @@ class Character {
    * The shipped face is a Decal on the Head; a chosen face replaces only its
    * texture.  null restores the rig's classic face.  Used by the start-page
    * face shelf and by remote avatar profiles. */
-  _applyFaceProfile(profile){
-    const decal=this.headDecal, base=this._faceBaseV;
-    if (!decal || !base || !decal.geometry) return;
-    const uv=decal.geometry.attributes.uv;
-    if (!uv) return;
-    for (let i=0;i<base.length;i++)
-      uv.array[i*2+1]=window.RBLXheadMesh.faceV(base[i], profile);
-    uv.needsUpdate=true;
+  _rebuildFace(profile){
+    if (!this.headDecal || !this.headSize || !window.RBLXheadMesh) return;
+    const patch=window.RBLXheadMesh.buildFace(this.headSize, this.headScale, profile);
+    if (!patch) return;
+    const old=this.headDecal.geometry;
+    this.headDecal.geometry=patch.geo;
+    if (old && old.dispose) old.dispose();
   }
 
   applyFace(url){
@@ -328,7 +330,7 @@ class Character {
         this.headDecal.material.needsUpdate=true;
         this.headDecal.visible=true;
       }
-      this._applyFaceProfile(null);
+      this._rebuildFace(null);
       this.faceUrl=null;
       return;
     }
@@ -339,7 +341,7 @@ class Character {
     this.headDecal.material.transparent=true;
     this.headDecal.material.needsUpdate=true;
     this.headDecal.visible=true;
-    this._applyFaceProfile(faceProfile(url));
+    this._rebuildFace(faceProfile(url));
   }
 
   /* Overhead tag  name plus, when damaged, the decomp's billboard health

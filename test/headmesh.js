@@ -85,13 +85,28 @@ for (let i=0;i<idx.length;i++){
 }
 assert.ok(nonlinear > 20, 'u mapping is still linear in x');
 
-/* Vertical tile is centered on the classic face art; Miked can override it. */
-assert.ok(Math.abs(H.faceV(0,null)-0.2734375) < 1e-6);
-assert.ok(Math.abs(H.faceV(1,null)-0.7734375) < 1e-6);
-const miked={vStart:0.044212,vSpan:0.767045};
-assert.ok(Math.abs(H.faceV(0,miked)-0.044212) < 1e-6);
-assert.ok(Math.abs(H.faceV(1,miked)-0.811257) < 1e-6);
-assert.ok(face.geo.userData.faceBaseV, 'face base-V attribute missing');
-assert.strictEqual(face.geo.userData.faceBaseV.length, face.geo.attributes.uv.count);
+/* Vertical tile is centered on the classic face art; Miked can override it
+ * with the linear x U mapping and a taller window. */
+const miked=H.buildFace({x:2,y:1,z:1},{x:1.25,y:1.25,z:1.25},
+  {vStart:0.044212,vSpan:0.767045,uMode:'x'});
+assert.ok(miked, 'Miked face patch missing');
+const muv=miked.geo.attributes.uv.array, mpos=miked.geo.attributes.position.array;
+const midx=miked.geo.index.array;
+let mMinV=1,mMaxV=0,mMinX=Infinity,mMaxX=-Infinity,mLeftU=null,mRightU=null,mTopV=null,mBottomV=null;
+for (let i=0;i<midx.length;i++){
+  const v=midx[i], u=muv[v*2], t=muv[v*2+1], x=mpos[v*3], y=mpos[v*3+1];
+  mMinV=Math.min(mMinV,t); mMaxV=Math.max(mMaxV,t);
+  if (x<mMinX) mMinX=x; if (x>mMaxX) mMaxX=x;
+  if (mLeftU===null || x>mLeftU.x){ mLeftU={x,u}; }
+  if (mRightU===null || x<mRightU.x){ mRightU={x,u}; }
+  if (mTopV===null || y>mTopV.y){ mTopV={y,v:t}; }
+  if (mBottomV===null || y<mBottomV.y){ mBottomV={y,v:t}; }
+}
+assert.ok(Math.abs(mMinV-0.044212) < 1e-6 && Math.abs(mMaxV-0.811257) < 1e-6,
+  'Miked vertical window is wrong');
+assert.ok(Math.abs(mLeftU.u) < 1e-6 && Math.abs(mRightU.u-1) < 1e-6,
+  'Miked linear x U mapping is wrong');
+assert.ok(Math.abs(mTopV.v-0.811257) < 1e-6 && Math.abs(mBottomV.v-0.044212) < 1e-6,
+  'Miked vertical orientation is wrong');
 
 console.log('ALL HEADMESH TESTS PASSED');

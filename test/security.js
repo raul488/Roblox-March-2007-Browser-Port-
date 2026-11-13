@@ -101,8 +101,8 @@ for (const name of ['Miked', 'Cadi', 'ToaZuku', 'PoliceModlers']) {
 }
 const miked=faces.find(f => f.id === 'miked');
 assert.ok(miked && Math.abs(miked.vStart-0.044212) < 1e-9 &&
-  Math.abs(miked.vSpan-0.767045) < 1e-9,
-  'Miked face vertical window is missing');
+  Math.abs(miked.vSpan-0.767045) < 1e-9 && miked.uMode === 'x',
+  'Miked face profile is missing');
 for (const face of faces) {
   assert.ok(/^content\/faces\/[a-z0-9-]+\.png$/.test(face.src),
     'unexpected face path: ' + face.src);
