@@ -15,6 +15,7 @@ const root=path.join(__dirname,'..');
 const webIndex=fs.readFileSync(path.join(root,'web/index.html'),'utf8');
 const rootIndex=fs.readFileSync(path.join(root,'index.html'),'utf8');
 const about=fs.readFileSync(path.join(root,'web/about.html'),'utf8');
+const coreImageData=fs.readFileSync(path.join(root,'web/js/coreAssets.js'),'utf8');
 
 /* No inline event handlers: the page CSP has no script 'unsafe-inline'. */
 for (const html of [webIndex, rootIndex]) {
@@ -80,6 +81,8 @@ for (const shirt of shirts) {
     'unexpected T-shirt path: ' + shirt.src);
   assert.ok(fs.existsSync(path.join(root,'web',shirt.src)),
     'missing T-shirt texture: ' + shirt.src);
+  assert.ok(coreImageData.includes('window.IMAGE_DATA["'+shirt.src+'"]'),
+    'T-shirt texture is not embedded for file:// play: ' + shirt.src);
 }
 
 /* Face shelf: classic face plus the Homestead face textures. */
@@ -101,9 +104,13 @@ for (const face of faces) {
     'unexpected face path: ' + face.src);
   assert.ok(fs.existsSync(path.join(root,'web',face.src)),
     'missing face texture: ' + face.src);
+  assert.ok(coreImageData.includes('window.IMAGE_DATA["'+face.src+'"]'),
+    'face texture is not embedded for file:// play: ' + face.src);
 }
 assert.ok(fs.existsSync(path.join(root,'web/content/textures/face.png')),
   'classic face texture missing');
+assert.ok(coreImageData.includes('window.IMAGE_DATA["content/textures/face.png"]'),
+  'classic face texture is not embedded');
 
 /* Do not ship unreferenced PE stubs under the served web root. */
 function walk(dir) {
