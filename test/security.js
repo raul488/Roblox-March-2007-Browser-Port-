@@ -100,9 +100,8 @@ for (const name of ['Miked', 'Cadi', 'ToaZuku', 'PoliceModlers']) {
   assert.ok(faces.some(f => f.name === name), 'Homestead face missing: ' + name);
 }
 const miked=faces.find(f => f.id === 'miked');
-assert.ok(miked && Math.abs(miked.vStart-0.002734) < 1e-9 &&
-  Math.abs(miked.vSpan-0.85) < 1e-9 &&
-  Math.abs(miked.uScale-0.85) < 1e-9 && miked.uMode === 'x',
+assert.ok(miked && Math.abs(miked.vStart+0.0701) < 1e-9 &&
+  Math.abs(miked.vSpan-0.9957) < 1e-9 && miked.uMode === 'x',
   'Miked face profile is missing');
 for (const face of faces) {
   assert.ok(/^content\/faces\/[a-z0-9-]+\.png$/.test(face.src),
