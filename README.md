@@ -132,16 +132,3 @@ records the source and date; regenerate it if the banned list changes.
   (categories → phrases; no typing needed)
 - **1-0** hotbar (matches the HopperBins shipped in each place)
 - First-person zooms below 6 studs (classic behavior)
-
-## Development guard
-
-This repo ships a pre-commit hook in `.githooks/` that blocks private relay
-code, environment files, keys, tokens and logs from being committed. Enable it
-once after cloning:
-
-```sh
-git config core.hooksPath .githooks
-```
-
-The hook is a guardrail, not a guarantee. Never put deployment secrets in this
-public repo.
