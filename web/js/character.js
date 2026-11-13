@@ -65,11 +65,7 @@ const R6_JOINT={
   'Left Leg': {x:-0.5, y:-1,  z:0},
 };
 
-/* The face decal wraps on the generated HeadMesh; headmesh.buildFace()
- * applies the decomp 0.25..0.75 vertical UV tile to the shipped face.png. */
-
-/* The face shelf can carry a per-texture vertical window for art that is not
- * square (Miked's recovered image is 256x135). */
+/* The face shelf can carry a per-texture profile for non-square art. */
 function faceProfile(url){
   const list=window.RBLX_FACES||[];
   for (let i=0;i<list.length;i++) if (list[i].src===url) return list[i];
@@ -309,10 +305,7 @@ class Character {
     this.torsoDecal.visible=true;
   }
 
-  /* ---- custom head face ------------------------------------------------
-   * The shipped face is a Decal on the Head; a chosen face replaces only its
-   * texture.  null restores the rig's classic face.  Used by the start-page
-   * face shelf and by remote avatar profiles. */
+  /* Custom head face; null restores the shipped face. */
   _rebuildFace(profile){
     if (!this.headDecal || !this.headSize || !window.RBLXheadMesh) return;
     const patch=window.RBLXheadMesh.buildFace(this.headSize, this.headScale, profile);

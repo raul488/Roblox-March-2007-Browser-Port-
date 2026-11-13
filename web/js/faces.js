@@ -9,10 +9,7 @@
  * content/textures/face.png.
  */
 window.RBLX_FACES = [
-  /* Miked's recovered art is 256x135 (alpha y79..214), not square.  Map its
-   * full width at the art's own aspect: a 256:135 face covers ~53% of the
-   * square patch height, centered.  The window extends past the texture
-   * bottom; ClampToEdge samples its transparent edge. */
+  /* 256x135 art; map at its native aspect. */
   { id: 'miked', name: "Miked", src: 'content/faces/miked-face.png',
     vStart: -0.0701, vSpan: 0.9957, uMode: 'x' },
   { id: 'cadi', name: "Cadi", src: 'content/faces/cadi-face.png' },

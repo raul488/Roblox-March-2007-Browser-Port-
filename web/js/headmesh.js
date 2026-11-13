@@ -478,10 +478,6 @@ function build(size, scl){
   return { geo:g, dim:{ x:sx, y:sy, z:sz } };
 }
 
-/* Face decal patch: the front-facing triangles of the same HeadMesh.
- * U normally follows the rounded front-surface normal; a profile can use the
- * linear x mapping instead.  V is a 0.5 tile centered on face.png's visible
- * pixels, with optional per-texture overrides for non-square custom art. */
 function buildFace(size, scl, profile){
   const b=build(size, scl);
   const src=b.geo;
