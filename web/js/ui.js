@@ -71,10 +71,12 @@ class UI {
     if (this.$chatInput){ try { this.$chatInput.blur(); } catch(_){} }
   }
 
-  /* Message: big center overlay text */
+  /* Message: FUN_005ddca0 fills the viewport with a 50% grey sheet and
+   * centres white regular-Comic text.  An empty Text draws nothing. */
   showSystemMessage(text){
+    if (!text){ this.hideSystemMessage(); return; }
     this.$messageBox.textContent=text;
-    this.$messageBox.style.display='block';
+    this.$messageBox.style.display='flex';
     this.$messageBox.style.opacity='1';
     clearTimeout(this._mtHide);
   }
@@ -84,11 +86,13 @@ class UI {
     this._mtHide=setTimeout(()=>{ this.$messageBox.style.display='none'; }, 350);
   }
 
-  /* instance.new("Hint") port  the classic one-line hint, top center */
+  /* Hint: FUN_005ddff0 draws a full-width black bar along the bottom of
+   * the viewport.  The bar stays visible while the Hint exists, even with
+   * empty Text (the client only hides it when the instance leaves). */
   showHint(text){
     if (!this.$hintBox) return;
-    this.$hintBox.textContent=text;
-    this.$hintBox.style.display=text? 'block' : 'none';
+    this.$hintBox.textContent=text||'';
+    this.$hintBox.style.display='block';
   }
   hideHint(){
     if (this.$hintBox) this.$hintBox.style.display='none';
@@ -204,7 +208,9 @@ class UI {
     }
   }
 
-  /* Player List rows for solo or a relay roster. Names are text-only. */
+  /* Player List rows for solo or a relay roster.  FUN_0060c210 draws the
+   * names with the white getter; only the leaderstat columns use the
+   * palette, so every name stays white here. */
   setPlayers(list){
     const box=document.getElementById('playerList');
     if (!box) return;
@@ -214,9 +220,7 @@ class UI {
       const row=document.createElement('div');
       row.className='plrow';
       row.textContent=String(p.name||'Player');
-      if (p.self) row.style.fontWeight='bold';
       if (p.host) row.title='Host';
-      if (p.color) row.style.color=p.color;
       box.appendChild(row);
     }
   }
@@ -232,6 +236,8 @@ class UI {
     const rb=document.getElementById('reportBtn');
     if (rb) rb.style.display='block';
     if (this.$healthHud) this.$healthHud.style.display='flex';
+    const tags=document.getElementById('tagLayer');
+    if (tags) tags.style.display='block';
   }
   hideInGameHUD(){
     this.hideChatInput();
@@ -245,6 +251,8 @@ class UI {
     const rb=document.getElementById('reportBtn');
     if (rb) rb.style.display='none';
     if (this.$healthHud) this.$healthHud.style.display='none';
+    const tags=document.getElementById('tagLayer');
+    if (tags) tags.style.display='none';
   }
 }
 

@@ -64,6 +64,10 @@ const R6_JOINT={
   'Right Leg':{x:0.5,  y:-1,  z:0},
   'Left Leg': {x:-0.5, y:-1,  z:0},
 };
+/* live rigs for the screen-space tag pass; removed when the group leaves */
+const liveTags=new Set();
+let _tagV=null;                    /* lazily created so headless loaders
+                                      without THREE can still parse the file */
 
 /* The face shelf can carry a per-texture profile for non-square art. */
 function faceProfile(url){
@@ -93,6 +97,7 @@ class Character {
     this.climbing=false;              // physics sets this on a ladder/truss
     this.animateLua=false;            // true once the shipped Animate script runs
     this.remote=false;                // replicated avatar: no local input/sounds/events
+    liveTags.add(this);               // screen-space overhead tag (renderTags)
     this.walkSpeed=16;                // classic humanoid
     this.jumpVelocity=50;
     this.velocity=new THREE.Vector3(0,0,0);    // set by physics each step
@@ -199,7 +204,6 @@ class Character {
       else if (name==='Right Leg') this.joints['Right Hip']=pivot;
       else if (name==='Left Leg')  this.joints['Left Hip']=pivot;
     }
-    this._addNameTag();
     if (!this.remote) this._ensureCoreSounds();
     this.rigReady=true;
     return this;
@@ -334,58 +338,63 @@ class Character {
     this._rebuildFace(faceProfile(url));
   }
 
-  /* Overhead tag  name plus, when damaged, the decomp's billboard health
-   * bar (Roblox.exe.c FUN_0060d5f0: bar width = character bounds width/8,
-   * height = width/10; "Health" label color = the (0,0,1) palette getter
-   * FUN_005007d0; bar fill = the (0,1,0) getter FUN_005007a0). */
-  _addNameTag(){
-    this.tagCanvas=document.createElement('canvas');
-    this.tagCanvas.width=256; this.tagCanvas.height=96;
-    this.tagHealthPct=-1;
-    this._drawTag();
-  }
-
-  _drawTag(){
-    const c=this.tagCanvas, g=c.getContext('2d');
-    const FONT='"Comic Sans MS","Comic Sans",sans-serif';
-    g.clearRect(0,0,c.width,c.height);
-    g.font='bold 26px '+FONT;   // comics.fnt  the client's own UI font (decomp :526125)
-    g.textAlign='center';
-    g.lineWidth=5; g.strokeStyle='rgba(0,0,0,0.9)';
-    g.strokeText(this.playerName, 128, 34);
-    g.fillStyle=this.tagColor||'#ffffff';          // name color: white or TeamColor
-    g.fillText(this.playerName, 128, 34);
-    const pct=Math.max(0, Math.min(1, this.health/(this.maxHealth||1)));
-    if (pct<0.999){
-      // mined literals: bar = character bounds width/8 over heads, height/10
-      g.font='bold 16px '+FONT;
-      g.fillStyle='#0000ff';                      // "Health" label (FUN_005007d0)
-      g.fillText('Health', 128, 58);
-      const bw=128, bh=15, bx=128-bw/2, by=64;
-      g.fillStyle='rgba(0,0,0,0.75)'; g.fillRect(bx-2, by-2, bw+4, bh+4);
-      const fill = pct>0.55? '#00ff00' : (pct>0.25? '#ffff00' : '#ff0000');
-      g.fillStyle=fill;                           // fill (FUN_005007a0)
-      g.fillRect(bx, by, bw*pct, bh);
-    }
-    const tex=new THREE.CanvasTexture(c);
-    const sp=new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true, depthTest:false }));
-    sp.scale.set(4,1.5,1);
-    sp.position.y=3.8;
-    if (this.nameTag){ this.group.remove(this.nameTag); this.nameTag.material.map.dispose(); }
-    this.nameTag=sp;
-    this.group.add(sp);
-  }
-
-  _tagRedraw(){                                   // cheap: only when pct moved
-    if (!this.tagCanvas) return;
-    const pct=this.health/(this.maxHealth||1);
-    if (Math.abs(pct-this.tagHealthPct) > 0.01){ this.tagHealthPct=pct; this._drawTag(); }
-  }
   /* Teams: the overhead name uses Player.TeamColor (RBX::Teams behaviour) */
   setTagColor(css){
     if (!css||css===this.tagColor) return;
     this.tagColor=css;
-    if (this.rigReady) this._drawTag();
+  }
+
+  /* Overhead tag metrics, FUN_005a59f0: the engine projects Head.Position
+   * + 1.5y and draws a screen-space name 12/10/8 px at <20/<50/<100
+   * studs, with an always-present bar 4x wide and half as tall. */
+  static tagMetrics(distance){
+    if (!(distance < 100)) return null;
+    const size = distance < 20 ? 12 : (distance < 50 ? 10 : 8);
+    return { size:size, barW:size*4, barH:size/2 };
+  }
+
+  /* Screen-space tag pass (FUN_005a59f0).  The classic client never uses a
+   * shrinking world sprite: it projects the Head anchor and draws 2D text
+   * with a black outline and the green/red health bar below it. */
+  static renderTags(ctx, camera, w, h){
+    if (!ctx||!camera) return;
+    ctx.clearRect(0,0,w,h);
+    camera.updateMatrixWorld();
+    for (const ch of Array.from(liveTags)){
+      if (!ch.group || !ch.group.parent){ liveTags.delete(ch); continue; }
+      if (!ch.rigReady || !ch.head || !ch.alive || !ch.group.visible) continue;
+      const name=ch.playerName;
+      if (!name) continue;
+      if (!_tagV) _tagV=new THREE.Vector3();
+      _tagV.set(0,0,0);
+      ch.head.pivot.getWorldPosition(_tagV);
+      _tagV.y += 1.5;                     /* FUN_005a59f0: head + 1.5 */
+      const dist=_tagV.distanceTo(camera.position);
+      const m=Character.tagMetrics(dist);
+      if (!m) continue;
+      _tagV.project(camera);
+      if (_tagV.z < -1 || _tagV.z > 1) continue;
+      const x=(_tagV.x*0.5+0.5)*w;
+      const y=(-_tagV.y*0.5+0.5)*h;
+      if (x < -160 || x > w+160 || y < -32 || y > h+32) continue;
+
+      ctx.font=m.size+'px "Comic Sans MS","Comic Sans",sans-serif';
+      ctx.textAlign='center';
+      ctx.textBaseline='bottom';
+      ctx.lineJoin='round';
+      ctx.lineWidth=Math.max(2, m.size/6);
+      ctx.strokeStyle='#000000';
+      ctx.strokeText(name, x, y);
+      ctx.fillStyle=ch.tagColor||'#ffffff';   /* white or TeamColor */
+      ctx.fillText(name, x, y);
+
+      const pct=Math.max(0, Math.min(1, ch.health/(ch.maxHealth||1)));
+      const bx=x-m.barW/2, by=y;
+      ctx.fillStyle='rgb(129,197,22)';         /* FUN_005a2dc0 */
+      ctx.fillRect(bx, by, m.barW*pct, m.barH);
+      ctx.fillStyle='#ff0000';                 /* FUN_00500770 */
+      ctx.fillRect(bx+m.barW*pct, by, m.barW*(1-pct), m.barH);
+    }
   }
 
   /* Live Part.CFrame/Position for the fake DataModel limbs.  The pivot is
@@ -532,7 +541,6 @@ class Character {
     if (this.sndRun) this.sndRun.pause();
     this._fallSfxArmed=false;                 /* no swoosh for the corpse */
     if (!this.remote) window.Sounds.sound('uuhhh.wav', {volume:1});  // humanoidSound: Died → sDied
-    if (this.nameTag) this.nameTag.visible=false;
     if (this.onDeath) this.onDeath();
   }
 
@@ -543,7 +551,6 @@ class Character {
     this.pose='Standing';
     this.climbing=false;
     this._fallSfxArmed=true;                   /* fresh rig can swoosh again */
-    if (this.nameTag) this.nameTag.visible=true;
   }
 
   /* per-frame driver (fixed 60Hz step) */
@@ -611,7 +618,6 @@ class Character {
     this.joints['Left Hip']       && (this.joints['Left Hip'].rotation.x       = -this._chase(this.Motors['Left Hip'],       dt));
     /* humanoidHealth: +1%/s while alive (loop body ported) */
     if (!this.remote) this._regen(dt);
-    this._tagRedraw();
   }
 
   _fireHumanoidEvent(pose, speed){

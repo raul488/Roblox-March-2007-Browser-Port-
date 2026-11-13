@@ -38,6 +38,7 @@ const perf=window.__perf={
 };
 
 let renderer, scene, camera, world=null, character=null, controller=null, tools=null, sjobs=null, netgame=null;
+let tagCanvas=null, tagCtx=null;  /* screen-space overhead tags (FUN_005a59f0) */
 let localMuteUntil=0, localStopTimer=0;
 const MAX_PLACE_BYTES = 32 * 1024 * 1024;
 const MAX_PLACE_INSTANCES = 50000;
@@ -135,6 +136,8 @@ function boot(){
   scene=new THREE.Scene();
   camera=new THREE.PerspectiveCamera(70, 1, 0.4, 6000);
   window.__camera=camera;          // world.rayFromCamera fallback
+  tagCanvas=document.getElementById('tagLayer');
+  tagCtx=tagCanvas&&tagCanvas.getContext?tagCanvas.getContext('2d'):null;
   window.addEventListener('resize', resize);
   resize();
   /* Render only while this window is focused and visible.  A blurred window
@@ -171,6 +174,12 @@ function resize(){
   renderer.setSize(w, h, false);
   camera.aspect=w/h;
   camera.updateProjectionMatrix();
+  if (tagCanvas&&tagCtx){
+    const dpr=Math.min(window.devicePixelRatio||1, 2);
+    tagCanvas.width=Math.round(w*dpr);
+    tagCanvas.height=Math.round(h*dpr);
+    tagCtx.setTransform(dpr,0,0,dpr,0,0);
+  }
 }
 
 /* Skip all drawing while the window is blurred or the tab is hidden.  The
@@ -791,6 +800,12 @@ function render(dt){
   if (window.Sounds && window.Sounds.setListener){
     camera.getWorldDirection(_camFwd);
     window.Sounds.setListener(camera.position, _camFwd, camera.up);
+  }
+  /* overhead tags are screen-space 2D text drawn after the camera pose is
+   * final (FUN_005a59f0 projects Head+1.5 and draws, never a 3D sprite) */
+  if (tagCtx && window.RBLXcharacter){
+    const C=window.RBLXcharacter.Character;
+    if (C && C.renderTags) C.renderTags(tagCtx, camera, window.innerWidth, window.innerHeight);
   }
   if (world && world.skyMesh) world.skyMesh.position.copy(camera.position);
   if (world && world.billboardCelestial) world.billboardCelestial(camera);

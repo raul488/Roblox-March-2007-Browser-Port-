@@ -585,12 +585,6 @@
 
     disposeCharacter(ch) {
       if (!ch) return;
-      if (ch.nameTag) {
-        if (ch.nameTag.material) {
-          if (ch.nameTag.material.map) ch.nameTag.material.map.dispose();
-          ch.nameTag.material.dispose();
-        }
-      }
       this.scene.remove(ch.group);
     }
 
@@ -922,7 +916,6 @@
         ch.onGround = r.onGround;
         ch.health = r.health;
         ch.alive = r.alive;
-        if (ch.nameTag) ch.nameTag.visible = r.alive;
         ch.step(dt, ZERO_INPUT);
       }
       this.stepFx(dt);
@@ -1119,7 +1112,6 @@
           var ackOK = Number.isFinite(ack) && ack > 0;
           if (e.a === 0) {
             this.character.alive = false;
-            if (this.character.nameTag) this.character.nameTag.visible = false;
           } else if (!wasAlive) {
             this.character.respawn();
             this.character.group.position.set(x, y, z);

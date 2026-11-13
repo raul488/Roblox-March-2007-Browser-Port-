@@ -58,12 +58,15 @@ body{ color:#111; }
  * blurbs and list rows; chat lines stay regular too */
 .subtitle,.tip,.cfgRow label,.avatarLabel,.cfgHint,#openFile,
 .pl,.chatLine,.tool span,#chatLog{ font-weight:normal; }
-/* nav buttons/title headers + in-game hints/banners/modals:
- * bold forced via font-weight (comicbd.ttf), the 2007 site's trick */
-#menubar span,#playerList b,#notif .noti,#messageBox,
+/* site nav/title headers keep the bold face; the in-game HUD is the
+ * single regular comics.fnt (the 2007 client shipped no bold HUD face) */
 #loadingBar b,.partTabs span,.tshirtBtn{ font-weight:bold; }
 #view{ position:fixed; inset:0; }
 canvas.viewport{ display:block; width:100%; height:100%; }
+/* screen-space overhead player tags (FUN_005a59f0): regular Comic Sans,
+ * black outline, tiny green/red health bar; above the 3D view, below HUD */
+#tagLayer{ display:none; position:fixed; inset:0; width:100%; height:100%;
+           pointer-events:none; z-index:20; }
 /* loading bar */
 #loadingBar{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:120; background:rgba(40,60,80,.55); }
 #loadingBar .box{ background:#f0f0f0; border:1px solid #9aa9b8; padding:16px 26px; box-shadow:0 4px 22px rgba(0,0,0,.5); }
@@ -146,25 +149,27 @@ canvas.viewport{ display:block; width:100%; height:100%; }
  * contiguous in Roblox.exe at 0x3bc2e0..0x3bc2c4).  The five 100px
  * toolbar cells, the 178px Player List panel, the 96x96 backpack slots
  * and the 2x2 camera buttons reproduce the shipped client's HUD. */
-#menubar{ display:none; position:fixed; top:0; left:0; z-index:42; height:24px; color:#333; font-size:13px;
-          background:rgba(120,120,120,0.6); border:0; border-bottom:1px solid #666;
+#menubar{ display:none; position:fixed; top:0; left:0; z-index:42; height:24px; color:#333;
+          font:11px Tahoma,'MS Sans Serif','Segoe UI',sans-serif;
+          background:#d4d0c8; border:0; border-bottom:1px solid #9a9a9a;
           align-items:center; gap:0; cursor:default; }
 #menubar span{ display:flex; align-items:center; justify-content:flex-start; width:100px; height:100%;
                box-sizing:border-box; padding:0 10px; border-radius:0; white-space:nowrap; }
 #menubar span:hover{ background:#c8c8c8; }
-#playerList{ display:none; position:fixed; top:8px; right:8px; width:178px; z-index:43;
+#playerList{ display:none; position:fixed; top:10px; right:10px; width:178px; z-index:43;
              background:rgba(120,120,120,0.6); padding:4px 6px 6px; }
-#playerList b{ display:block; font-size:14px; color:#ffffff; text-shadow:0 1px 1px rgba(0,0,0,0.45); margin-bottom:2px; }
-#playerList .plrow{ font-size:13px; color:#0000ff; text-shadow:none; }
-/* HealthHud: the 2007 widget is a 10x100 vertical bar under the Player
- * List, green at full health and red above the fill as health drops
- * (FUN_0060d5f0; colour FUN_005a2dc0 = 0.506,0.773,0.086).  The blue
- * "Health" caption sits below it (FUN_005007d0). */
-#healthHud{ display:none; position:fixed; top:104px; right:8px; width:90px; z-index:44;
+#playerList b{ display:block; font-size:14px; font-weight:400; color:#ffffff; text-shadow:0 1px 1px rgba(0,0,0,0.45); margin-bottom:2px; }
+#playerList .plrow{ font-size:14px; font-weight:400; color:#ffffff; text-shadow:0 1px 1px rgba(0,0,0,0.45); }
+/* HealthHud (FUN_0060d5f0): a 10x100 vertical bar anchored 60px in from
+ * the right edge, 200px down, below the Player List.  Blue "Health"
+ * caption centred under it with a 7px gap (FUN_005007d0). */
+#healthHud{ display:none; position:fixed; top:200px; right:60px; width:10px; z-index:44;
             flex-direction:column; align-items:center; pointer-events:none; }
 #healthBar{ width:10px; height:100px; background:#ff0000; position:relative; }
 #healthFill{ position:absolute; left:0; right:0; bottom:0; height:100%; background:rgb(129,197,22); }
-#healthLabel{ color:#0000ff; font-size:18px; font-weight:bold; line-height:20px; margin-top:2px; }
+#healthLabel{ position:absolute; top:100%; left:50%; transform:translateX(-50%); width:max-content;
+              color:#0000ff; font-size:18px; font-weight:400; line-height:20px; margin-top:7px;
+              white-space:nowrap; }
 /* 2007 chat: the history is the top-left fold under the toolbar, one
  * 12px Comic Sans line on 14px pitch, each line shrink-wrapped by the
  * client grey (FUN_00551ab0 = 0.6,0.6,0.6 alpha 0.6).  The native edit
@@ -177,7 +182,7 @@ canvas.viewport{ display:block; width:100%; height:100%; }
 #chatLog .chatLine b{ flex:0 0 auto; min-width:16px; margin-right:4px; font-weight:normal; }
 #chatLog .chatLine span{ flex:0 0 auto; color:#ffffff; }
 #chatInput{ display:block; position:fixed; left:0; right:0; bottom:0; width:100%; height:28px; box-sizing:border-box;
-            background:#b8b8b8; border:0; border-top:1px solid #777; color:#333; padding:4px 104px 4px 8px;
+            background:#b8b8b8; border:0; border-top:1px solid #777; color:#333; padding:4px 104px 4px 40px;
             font-size:13px; outline:none; font-family:inherit; z-index:52; }
 #chatInput:focus{ background:#c8c8c8; }
 #chatInput:disabled{ color:#666; background:#b0b0b0; }
@@ -187,25 +192,24 @@ canvas.viewport{ display:block; width:100%; height:100%; }
 #safeOnlyBtn[aria-pressed="true"]{ background:#316ac5; border-color:#24405c; color:#fff; }
 #safeOnlyBtn:hover{ filter:brightness(1.05); }
 /* Super Safe Chat: ChatButton (32x23 Chat.png) + ChatMenuPanel above the
- * chat fold.  Four art states are the engine's FUN_005e8740 suffixes.
- * The client anchors the bubble above the backpack strip (a March-2007
- * capture puts it ~130px above the screen bottom, clear of the 96px
- * backpack cells that start 28px up). */
-#safeChatBtn{ position:fixed; left:8px; bottom:130px; z-index:53;
+ * chat bar.  Four art states are the engine's FUN_005e8740 suffixes.
+ * The bubble sits at the left end of the typed-chat bar, as in the 2007
+ * client; the menu opens directly above it. */
+#safeChatBtn{ position:fixed; left:0; bottom:4px; z-index:53;
               width:32px; height:23px; padding:0; margin:0; border:0; background:transparent;
               cursor:pointer; }
 #safeChatBtn img{ width:32px; height:23px; display:block; -webkit-user-drag:none; }
 #safeChatBtn:disabled{ cursor:default; }
-#safeChatPanel{ position:fixed; left:6px; bottom:158px; min-width:196px; max-width:260px; max-height:60vh;
+#safeChatPanel{ position:fixed; left:0; bottom:32px; min-width:196px; max-width:260px; max-height:60vh;
                 overflow-y:auto; z-index:51; background:rgba(200,200,200,0.94); border:1px solid #8b8b8b;
                 box-shadow:0 2px 6px rgba(0,0,0,0.35); padding:2px; }
-#safeChatPanel .scTitle{ font-weight:bold; font-size:11px; color:#333; padding:3px 7px; border-bottom:1px solid #a6a6a6;
+#safeChatPanel .scTitle{ font-weight:400; font-size:11px; color:#333; padding:3px 7px; border-bottom:1px solid #a6a6a6;
                          margin-bottom:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 #safeChatPanel .scRow{ display:block; width:100%; text-align:left; background:none; border:0; font:inherit;
                        font-size:12.5px; color:#111; padding:3px 8px; cursor:pointer; white-space:nowrap; }
 #safeChatPanel .scRow:hover, #safeChatPanel .scRow:focus{ background:#316ac5; color:#fff; outline:none; }
 #safeChatPanel .scBack{ color:#345; font-size:11.5px; }
-#notif{ position:fixed; right:14px; bottom:140px; z-index:80; color:#fff; font-size:13px; text-shadow:0 1px 3px #000; text-align:right; }
+#notif{ position:fixed; right:14px; bottom:140px; z-index:80; color:#fff; font-size:13px; font-weight:400; text-shadow:0 1px 3px #000; text-align:right; }
 .noti{ padding:3px 0; transition:opacity .5s; }
 /* classic BackpackItem strip: 96x96 cells flush at the bottom-left,
  * translucent grey backdrop, 80px icon, number in a grey box at the
@@ -218,8 +222,9 @@ canvas.viewport{ display:block; width:100%; height:100%; }
 .tool img{ width:80px; height:80px; object-fit:contain; -webkit-user-drag:none; }
 .tool b.toolName{ display:flex; align-items:center; justify-content:center; width:82px; height:78px;
                   text-align:center; font-family:'Comic Sans MS','Comic Sans',sans-serif;
-                  font-size:12px; font-weight:700; line-height:1.15;
-                  color:#000; overflow:hidden; word-break:break-word; }
+                  font-size:12px; font-weight:400; line-height:1.15;
+                  color:#000; text-shadow:0 1px 1px rgba(255,255,255,0.5);
+                  overflow:hidden; word-break:break-word; }
 .tool span{ position:absolute; left:3px; bottom:3px; width:19px; height:19px; line-height:19px;
             text-align:center; font-size:12px; color:#222; background:#d4d0c8;
             border:1px solid #7f7f7f; text-shadow:none; }
@@ -234,15 +239,24 @@ canvas.viewport{ display:block; width:100%; height:100%; }
                  grid-template-columns:24px 24px; gap:5px; }
 #cameraControls img{ width:24px; height:24px; cursor:pointer; -webkit-user-drag:none; }
 #cameraControls img:hover{ filter:brightness(1.12); }
-#messageBox{ display:none; position:fixed; left:50%; transform:translateX(-50%); top:14vh; z-index:70; font-size:24px; color:#fff;
-             text-shadow:0 2px 4px #111; transition:opacity .35s; text-align:center; }
-#hintBox{ display:none; position:fixed; left:50%; transform:translateX(-50%); top:8vh; z-index:69;
-          font-size:17px; color:#ffef9f; text-shadow:0 2px 4px #111; text-align:center; max-width:80vw; }
+/* Message (FUN_005ddca0): full-viewport 50% grey sheet with centred white
+ * text and a black outline.  It does not draw over the native chat bar. */
+#messageBox{ display:none; position:fixed; inset:0 0 28px 0; z-index:70;
+             align-items:center; justify-content:center;
+             background:rgba(128,128,128,0.5); font-size:14px; font-weight:400; color:#fff;
+             text-shadow:2px 0 0 #000,-2px 0 0 #000,0 2px 0 #000,0 -2px 0 #000;
+             transition:opacity .35s; text-align:center; pointer-events:none; }
+/* Hint (FUN_005ddff0): the 2007 client draws a full-width black bar along
+ * the bottom of the 3D viewport with centred white text. */
+#hintBox{ display:none; position:fixed; left:0; right:0; bottom:28px; height:20px; z-index:69;
+          background:#000; color:#fff; font-size:14px; font-weight:400; line-height:20px;
+          text-align:center; text-shadow:none; overflow:hidden; white-space:nowrap;
+          pointer-events:none; }
 /* join-time performance warning for places with a high Workspace part
    count (ui.warnIfHighPartCount); click dismisses it */
 #perfWarn{ display:none; position:fixed; left:50%; top:22vh; transform:translateX(-50%); z-index:71;
            max-width:86vw; padding:7px 16px; background:rgba(60,25,10,0.8); border:1px solid #c46a5a;
-           color:#ffd76a; font-size:15px; text-align:center; text-shadow:0 2px 4px #111;
+           color:#ffd76a; font-size:15px; font-weight:400; text-align:center; text-shadow:0 2px 4px #111;
            transition:opacity .5s; cursor:pointer; }
 /* the classic in-game cursor (client shipped ArrowCursor.png); the
    39 40 hotspot is the arrow tip inside the 80×80 transparent canvas */
@@ -288,6 +302,7 @@ input{ cursor:text; }
 </head>
 <body>
 <div id="view"></div>
+<canvas id="tagLayer" aria-hidden="true"></canvas>
 
 <!-- classic 2007 top bar (Play Solo)  labels from the real client/decomp -->
 <div id="menubar">
