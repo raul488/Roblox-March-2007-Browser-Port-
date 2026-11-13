@@ -68,21 +68,4 @@ assert.ok(Math.abs(rightU.u-1) < 1e-6, '-X should map to u=1');
 assert.ok(Math.abs(topV.v-0.75) < 1e-6, 'top should map to v=0.75');
 assert.ok(Math.abs(bottomV.v-0.25) < 1e-6, 'bottom should map to v=0.25');
 
-/* U follows the rounded surface normal, not raw x. */
-const nor=face.geo.attributes.normal.array;
-let minX=Infinity,maxX=-Infinity,nonlinear=0;
-for (let i=0;i<idx.length;i++){
-  const x=pos[idx[i]*3];
-  if (x<minX) minX=x; if (x>maxX) maxX=x;
-}
-for (let i=0;i<idx.length;i++){
-  const v=idx[i];
-  let expected=0.5-0.6*nor[v*3];
-  if (expected<0) expected=0; else if (expected>1) expected=1;
-  assert.ok(Math.abs(uv[v*2]-expected) < 1e-6, 'u does not follow normal.x');
-  const xlinear=(maxX-pos[v*3])/((maxX-minX)||1);
-  if (Math.abs(expected-xlinear) > 0.05) nonlinear++;
-}
-assert.ok(nonlinear > 20, 'u mapping is still linear in x');
-
 console.log('ALL HEADMESH TESTS PASSED');

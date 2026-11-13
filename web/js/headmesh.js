@@ -498,22 +498,21 @@ function buildFace(size, scl){
     }
   }
   if (!outIdx.length) return null;
-  let minY=Infinity,maxY=-Infinity;
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
   for (let i=0; i<used.length; i++){
     if (!used[i]) continue;
-    const y=pos[i*3+1];
+    const x=pos[i*3], y=pos[i*3+1];
+    if (x<minX) minX=x; if (x>maxX) maxX=x;
     if (y<minY) minY=y; if (y>maxY) maxY=y;
   }
-  const ry=(maxY-minY)||1;
+  const rx=(maxX-minX)||1, ry=(maxY-minY)||1;
   const uv=new Float32Array(used.length*2);
   for (let i=0; i<used.length; i++){
     if (!used[i]) continue;
-    // U follows the rounded front surface (normal.x), not raw x.  This is
-    // the front-face angular span; +X stays on the texture's u=0 side.
-    let u=0.5 - 0.6*nor[i*3];
-    if (u<0) u=0; else if (u>1) u=1;
-    // Vertical tile from FUN_004e13d0: 0.25 start, 0.5 span.  No texture crop.
-    uv[i*2]   = u;
+    // Facing the -Z side: +X is screen-left, so u runs from +X to -X.
+    // The decomp front-surface builder (FUN_004e13d0, default flags 0) starts
+    // its face tile at 0.25 and spans 0.5 vertically.  No texture crop.
+    uv[i*2]   = (maxX-pos[i*3])/rx;
     uv[i*2+1] = 0.25 + 0.5 * ((pos[i*3+1]-minY)/ry);
   }
   const g=new THREE.BufferGeometry();
