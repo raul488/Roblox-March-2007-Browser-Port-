@@ -88,9 +88,9 @@ assert.ok(nonlinear > 20, 'u mapping is still linear in x');
 /* Vertical tile is centered on the classic face art; Miked can override it. */
 assert.ok(Math.abs(H.faceV(0,null)-0.2734375) < 1e-6);
 assert.ok(Math.abs(H.faceV(1,null)-0.7734375) < 1e-6);
-const miked={vStart:0.15234375,vSpan:0.55078125};
-assert.ok(Math.abs(H.faceV(0,miked)-0.15234375) < 1e-6);
-assert.ok(Math.abs(H.faceV(1,miked)-0.703125) < 1e-6);
+const miked={vStart:0.044212,vSpan:0.767045};
+assert.ok(Math.abs(H.faceV(0,miked)-0.044212) < 1e-6);
+assert.ok(Math.abs(H.faceV(1,miked)-0.811257) < 1e-6);
 assert.ok(face.geo.userData.faceBaseV, 'face base-V attribute missing');
 assert.strictEqual(face.geo.userData.faceBaseV.length, face.geo.attributes.uv.count);
 
