@@ -25,11 +25,10 @@ class UI {
     this._mtHide=null;
   }
 
-  /* chat window (bottom-left fold in the classic HUD).
-   * Colors are the palette mined verbatim from the exe getters
-   * (FUN_00500770 red, FUN_005007a0 green, FUN_005007d0 blue,
-   * FUN_00500800 violet, FUN_00500840 yellow, FUN_00500870 orange) plus the
-   * message-class switch FUN_005b8060: 1=blue system, 2=red warn, 6=yellow tip. */
+  /* chat/name colors from the exe getters (FUN_00500770 red,
+   * FUN_005007a0 green, FUN_005007d0 blue, FUN_00500800 violet,
+   * FUN_00500840 yellow, FUN_00500870 orange) plus the message-class
+   * switch FUN_005b8060: 1=blue system, 2=red warn, 6=yellow tip. */
   static PALETTE=['#0000ff','#ff0000','#b200ff','#ffff00','#00ff00','#ff8000']; // classic name-color cycle (order approx  getter family order)
   playerColor(who){
     let h=0;
@@ -72,7 +71,7 @@ class UI {
     if (this.$chatInput){ try { this.$chatInput.blur(); } catch(_){} }
   }
 
-  /* instance.new("Message") port  big center overlay text */
+  /* Message: big center overlay text */
   showSystemMessage(text){
     this.$messageBox.textContent=text;
     this.$messageBox.style.display='block';

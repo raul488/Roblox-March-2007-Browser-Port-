@@ -124,9 +124,8 @@ class Pellet {
       if (this.t>0.05){ h.hurt(this.damage); this.die(); return false; }
     }
     if (this.world.raycastBoxes(this.pos, {radius:1})){
-      // bounce: reflect up a bit off the face (simple wall bounce)
-      const solid=this.world.raycastBoxes(this.pos, {radius:1});
-      // knock damage in half against world parts (script semantic)
+      // knock damage in half on a world hit (script semantic); reverse the
+      // travel so the pellet bounces off the face
       this.damage/=2;
       window.Sounds.sound('collide.wav', {volume:0.2});
       if (this.damage<0.1){ this.die(); return false; }

@@ -252,7 +252,6 @@ async function joinPlace(name, providedText, netOpts){
     if (parsed.instances.length > MAX_PLACE_INSTANCES) {
       throw new Error('Place has too many instances (limit '+MAX_PLACE_INSTANCES+').');
     }
-    // rebuild scene fresh
     while (scene.children.length) scene.remove(scene.children[0]);
     world=new window.RBLXworld.WorldBuilder(scene);
     world.setCamera(camera);
@@ -692,8 +691,8 @@ function bindCameraControls(){
 /* --------------------------- 2007 main loop --------------------------- */
 const STEP=1/60;
 let acc=0;
-/* scratch vectors: the loop previously allocated four Vector3 objects per
- * step/frame; at 60 Hz that is pure GC churn */
+/* scratch vectors: avoid four Vector3 allocations per step/frame (pure GC
+ * churn at 60 Hz) */
 const _fdir=new THREE.Vector3(), _rdir=new THREE.Vector3();
 const _camTarget=new THREE.Vector3(), _camBack=new THREE.Vector3(), _camFwd=new THREE.Vector3();
 function loop(){

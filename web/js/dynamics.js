@@ -511,8 +511,8 @@ class Dynamics {
     look.__cells=cells;                // exact registration → exact removal
   }
   _neighbors(a){
-    /* Set-dedup: the old indexOf scan made big cells O(n²)  the load-time
-     * reflood asks this once per part (8k parts in RobloxHQ) */
+    /* Set-dedup: the load-time reflood asks this once per part
+     * (8k parts in RobloxHQ) */
     const out=[], seen=new Set();
     forEachCell(a, c=>{
       const s=this.grid.get(c);
@@ -521,9 +521,8 @@ class Dynamics {
     return out;
   }
   /* Candidate looks along a world ray, traversed cell-by-cell through the
-   * same spatial hash.  Mouse.Target and the hand tools used to test every
-   * collider in a place (8k in RobloxHQ) once per frame; this visits only
-   * the cells the ray crosses.  Conservative: returns every look in those
+   * same spatial hash, so the mouse ray visits only the cells it crosses
+   * (8k colliders in RobloxHQ).  Conservative: returns every look in those
    * cells, so the exact ray tests in world.rayHit are unchanged. */
   rayCandidates(origin, dir, maxDist){
     const out=[], seen=new Set();
@@ -576,8 +575,8 @@ class Dynamics {
    *     1 stud deep, all Smooth(0), no script welds  the pips ride only
    *     because the Weld faces bond overlapping neighbors.
    *   - FUN_005eb0a0 = face-axis gate: the two touching faces anti-parallel
-   *     within 0.35 rad (whole-body rotation equality was the old wrong
-   *     reading; a part rotated 90 degrees still joins a flush neighbor).
+   *     within 0.35 rad (a part rotated 90 degrees still joins a flush
+   *     neighbor).
    *   - the positional face test FUN_005f7480 is ambiguous in flat
    *     pseudocode; shipped evidence (beacon 1-stud overlap) says Weld/
    *     Glue bonds overlap range  snap stays exact (see APPROX 20).
@@ -653,11 +652,9 @@ class Dynamics {
     }
     /* Rigid family alignment is on the FACE AXES, not the whole body
      * orientation: FUN_005eb0a0 gates "axes ≤ 0.35 rad" between the two
-     * touching faces (plus plane distance, checked below). The old gate here
-     * demanded full rotation-matrix equality at 0.01/0.05  a part rotated
-     * 90° (a wall turned to run the other way) could never weld/snap to an
-     * axis-aligned neighbor even with flush anti-parallel faces, which is
-     * what made surface welds silently fail across most places. */
+     * touching faces (plus plane distance, checked below), so a part rotated
+     * 90° still welds to an axis-aligned neighbor on flush anti-parallel
+     * faces. */
     if (dot > -Math.cos(0.35)) return 0;            // faces anti-parallel within 0.35 rad
     const dist=(fa.px-fb.px)*fa.nx+(fa.py-fb.py)*fa.ny+(fa.pz-fb.pz)*fa.nz;
     const sep=Math.abs(dist);
@@ -677,7 +674,7 @@ class Dynamics {
   _reflood(){
     /* preserve momentum across the ClumpStage re-cluster: an Explosion
      * kicks the welded assembly, then the joint cut forces a new flood
-     * without this the kick was discarded with the old Assembly objects. */
+     * that would otherwise discard the kick with the old Assembly objects. */
     const prev=new Map();
     for (const [l,a] of this.asmMap) prev.set(l,{v:a.vel, w:a.angVel});
     this._refloodPrev=prev;
@@ -947,8 +944,7 @@ class Dynamics {
     this._make([look]);
     /* ClumpStage re-clusters the whole place.  That is only needed when the
      * new part can actually bond with a neighbour: an isolated projectile
-     * in flight stays its own assembly, and firing used to stall for
-     * 150-250 ms in a large place re-flooding every joint. */
+     * in flight stays its own assembly instead of re-flooding every joint. */
     let touches=false;
     for (const n of this._neighbors(look.aabb)){
       if (n===look||n.destroyed||!n.aabb) continue;
@@ -1111,10 +1107,8 @@ class Dynamics {
       }
     }
     /* Drop only the affected assemblies, and hand their non-visited
-     * members back to the graph.  The old loop dropped each visited
-     * member's whole assembly and recreated only the visited set, so a
-     * partial makeJoints (JetPack P4/P5 after P3 moves) silently orphaned
-     * every sibling that was not in the flood. */
+     * members back to the graph, so a partial makeJoints (JetPack P4/P5
+     * after P3 moves) cannot orphan a sibling outside the flood. */
     const affected=new Set();
     for (const l of visited){
       const na=this.asmMap.get(l);
@@ -1127,9 +1121,9 @@ class Dynamics {
       if (rest.length) leftovers.push(rest);
     }
     const welded=Array.from(visited);
-    /* Only local neighbours can touch: the old all-pairs scan was O(N²)
-     * (a restored 465-part model ran 108k touch tests, and Model:MakeJoints
-     * ran it once per part).  The grid already indexes exact AABBs. */
+    /* Only local neighbours can touch (an all-pairs scan is O(N²): a
+     * restored 465-part model runs 108k touch tests).  The grid already
+     * indexes exact AABBs. */
     for (const l of welded){
       for (const n of this._neighbors(l.aabb)){
         if (n===l||!visited.has(n)||n.destroyed||!n.aabb) continue;
@@ -1284,9 +1278,9 @@ class Dynamics {
     return this._blastPartAfterCut(look,pos,radius,pressure,seen);
   }
   /* Bulk form used by WorldBuilder.explodeAt.  Cutting N touching bricks
-   * used to run N full-world _reflood() passes synchronously (a large wall
-   * froze the browser for seconds).  All cuts are independent, so make them
-   * first, rebuild the final graph once, then kick the post-split bodies. */
+   * as N full-world _reflood() passes is synchronous and stalls on a large
+   * wall.  All cuts are independent, so make them first, rebuild the final
+   * graph once, then kick the post-split bodies. */
   blastParts(looks, pos, radius, pressure, seen){
     if (!looks||!looks.length) return false;
     for (const look of looks) this.breakJoints(look);
@@ -1363,7 +1357,7 @@ class Dynamics {
    * the torso even though the port renders the rig separately.
    * The LEGS are deliberately excluded: feet standing on a brick are flush
    * with it (CONTACT slop), and the flood always includes the anchored map,
-   * so a walking character used to weld the floor to itself on every
+   * so a walking character must not weld the floor to itself on every
    * beacon/regen makeJoints() call.  A model the torso/arms actually touch
    * (the JetPack) still welds. */
   _characterPartBoxes(){
@@ -1770,9 +1764,9 @@ class Dynamics {
   }
   /* An assembly just woke (sleep→false) or is about to move: the bodies
    * RESTING ON it must wake too, or they keep floating where their bed
-   * was.  Only the supported direction propagates  the old pass woke
-   * every sleeping assembly in the neighbouring spatial cells, so one
-   * settling plate kept a whole decorative pile awake forever. */
+   * was.  Only the supported direction propagates; waking every sleeping
+   * assembly in the neighbouring spatial cells keeps a whole decorative
+   * pile awake forever after one settling plate. */
   wakeAround(a){
     const todo=[a], seen=new Set([a]);
     while (todo.length){
@@ -1805,7 +1799,7 @@ class Dynamics {
     const next=new Map();
     for (const a of this.asms){
       if (a.static||a.asleep||a.hinge||a.movers.length||this._isScriptMover(a)) continue;
-      /* Sweep each body by ITS OWN travel.  One fast blast fragment used to
+      /* Sweep each body by ITS OWN travel.  One fast blast fragment must not
        * fatten every active body's query by the global maximum (4 studs),
        * creating hundreds of impossible pairs throughout the debris pile. */
       const margin=this._pairMargin(a,dt);
@@ -2582,9 +2576,9 @@ class Dynamics {
         const oy=Math.min(A.max.y-B.min.y, B.max.y-A.min.y);
         const oz=Math.min(A.max.z-B.min.z, B.max.z-A.min.z);
         /* flush EDGE contacts count (HappyHome's slide kisses the platform
-         * caps' edges exactly  zero-width x/z overlap  and the old
-         * <=0 gate gave it nothing to rest on, so the whole ramp fell
-         * through the map; the CONTACT slop already allows this on y) */
+         * caps' edges with zero-width x/z overlap; the CONTACT slop already
+         * allows this on y, so the slide rests instead of falling through
+         * the map) */
         if (ox<=-CONTACT||oz<=-CONTACT) continue;
         /* part-vs-part contact: the engine's Touched signal fires on ANY
          * touching part (the HHH crane parks by touching the Stop pad);
@@ -2621,11 +2615,10 @@ class Dynamics {
         }
         if (ox<=0||oz<=0){
           /* edge/corner contact  zero-width x/z footprint.  Resolving
-           * along the kiss axis is a ZERO-length push that used to
-           * consume the tick's one resolution slot and starve the real
-           * rest contact (HappyHome's slide fell through the platform
-           * exactly so).  With vertical penetration and the body on top,
-           * this is resting on a lip/corner  resolve as REST. */
+           * along the kiss axis would be a ZERO-length push that consumes
+           * the tick's one resolution slot and starves the real rest
+           * contact.  With vertical penetration and the body on top, this
+           * is resting on a lip/corner  resolve as REST. */
           if (oy>0){
             const acy=(A.min.y+A.max.y)/2, bcy=(B.min.y+B.max.y)/2;
             if (acy>bcy){

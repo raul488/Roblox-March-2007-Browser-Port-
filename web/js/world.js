@@ -1029,8 +1029,7 @@ class WorldBuilder {
   /* Single material for non-block shapes (HeadMesh/Sphere/Cylinder/Wedge/
    * FileMesh).  The block path goes through _buildMaterials because it needs
    * six face slots; these shapes have one slot but still honour the Part's
-   * Transparency and Reflectance properties (they used to ignore both, so a
-   * ghosted SpecialMesh stayed opaque). */
+   * Transparency and Reflectance properties. */
   _specialMaterial(bc, transparency, reflectance){
     const tr=Math.max(0, Math.min(1, transparency||0));
     const rf=Math.max(0, Math.min(1, reflectance||0));
@@ -1646,10 +1645,9 @@ class WorldBuilder {
     for (const o of src){
       if (o.destroyed || !o.aabb || o.canCollide===false) continue;
       if (exclude && (exclude.has(o)||exclude.has(o.part))) continue;
-      /* enclosing-AABB broadphase, then the part's REAL oriented box
-       * rotated walls have fat AABBs and the old broadphase-only test
-       * destroyed/moved/aimed at bricks the cursor was well beside (the
-       * "hammer is inaccurate" bug) */
+      /* enclosing-AABB broadphase, then the part's REAL oriented box:
+       * rotated walls have fat AABBs, so an AABB-only test hits bricks the
+       * cursor is well beside */
       if (this._rayAABB(origin, dir, o.aabb, maxDist)==null) continue;
       const hit=this._rayOBB(origin, dir, o, maxDist);
       if (hit!=null && (!best || hit<best.distance)){

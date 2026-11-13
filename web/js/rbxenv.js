@@ -257,8 +257,8 @@ const C3MT={
 };
 
 /* BrickColor wrapper {id, cl}  bridges BrickColor.new(idOrName).Color.
- * Name lookup scans the WHOLE shipped palette (ids run to 1032 with gaps
- * the old loop stopped at 64 and never found e.g. "Cool yellow"). */
+ * Name lookup scans the WHOLE shipped palette (ids run to 1032 with gaps),
+ * so names like "Cool yellow" resolve. */
 function paletteEntries(){
   const out=[];
   const pal=window.BrickColors||[];

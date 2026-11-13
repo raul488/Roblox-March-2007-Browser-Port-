@@ -261,12 +261,9 @@ class Character {
           }
         }
       } else {
-        // torso graphic plane on the box front (-Z).  The default decal IS
-        // the classic T-shirt slot (the shipped rig's torso logo); a
-        // ShirtGraphic.TextureId replaces it (applyTshirt).
-        // NOTE: rotation.y=PI alone reads un-mirrored from the front  the
-        // old mkTex mirror:true compensation (repeat.x=-1) is what mirrored
-        // the logo.
+        // torso graphic plane on the box front (-Z).  The shipped torso logo
+        // is the classic T-shirt slot (applyTshirt); rotation.y=PI faces
+        // front and reads un-mirrored.
         const w=size.x*0.92, h=size.y*0.92, z=-(size.z*0.5+0.012);
         const plane=new THREE.Mesh(
           new THREE.PlaneGeometry(w, h),
@@ -577,12 +574,9 @@ class Character {
         this._fireHumanoidEvent(pose, this.climbing? Math.abs(v.y) : speed);
       }
     }
-    /* humanoidSound loops/one-shots, driven per frame with hysteresis  the pose can
-     * flap Running↔FreeFall between collision frames on slopes/stairs, and
-     * chop-playing loops each flap was the source of the "jump sound spam":
-     * footsteps need sustained ground contact.  Death pauses everything:
-     * the fall state freezes (v.y stays < -7, airborne), so a dead body
-     * must never (re)drive sound. */
+    /* humanoidSound hysteresis: the pose can flap Running↔FreeFall on
+     * slopes/stairs, so footsteps need sustained ground contact.  A dead
+     * body never (re)drives sound. */
     this.gT=this.onGround? (this.gT||0)+dt : 0;
     this.aT=this.onGround? 0 : (this.aT||0)+dt;
     if (!this.remote && this.sndRun){
@@ -652,11 +646,8 @@ class Character {
 
   _ensureCoreSounds(){
     if (this.remote) return;
-    /* shipped humanoidSound.rbxm: ONLY sRunning is Looped=true  every
-     * other sound (sDied/sFallingDown/sFreeFalling/sGettingUp/sJumping)
-     * is a plain one-shot fired on its Humanoid event edge. The old port
-     * made the swoosh a per-frame LOOP, which kept re-play()ing forever
-     * once death froze the fall state (v.y<-7, airborne). */
+    /* shipped humanoidSound.rbxm: ONLY sRunning is Looped=true; every other
+     * sound is a one-shot on its Humanoid event edge. */
     this.sndRun=window.Sounds.makeLoop('bfsl-minifigfoots1.mp3', {volume:0.3});   // sRunning Looped
     this._fallSfxArmed=true;                                       // sFreeFalling one-shot per flight
   }
@@ -671,9 +662,7 @@ class Character {
    * The model goes there with the C0 rotation  no per-tool offsets. */
   setToolVisual(binType){
     if (this.toolMesh){
-      /* remove from wherever it was mounted  the old code removed from
-       * torso.mount, but the mesh lives on the ARM pivot, so unequip left
-       * every held gear floating on the arm forever */
+      /* the mesh is mounted on the ARM pivot, not torso.mount */
       if (this.toolMesh.parent) this.toolMesh.parent.remove(this.toolMesh);
       this.toolMesh=null;
     }

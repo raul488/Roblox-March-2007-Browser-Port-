@@ -1020,9 +1020,8 @@ function scopeLookup(sc,name){
 
 /* --------------------------- Lua 5.1 patterns ----------------------------
  * The classic lstrlib matcher (classes, sets, %b, %f, backrefs, captures)
- * ported so string.find/match/gmatch/gsub accept real patterns  the old
- * plain-text stubs silently returned wrong results for any dragged-in
- * script that uses them. Item model: itemMatch() consumes and returns a
+ * ported so string.find/match/gmatch/gsub accept real patterns.
+ * Item model: itemMatch() consumes and returns a
  * length (or -1); quantifier loops are generic over that length. */
 const PAT_SPECIAL=new Set(['^','$','(',')','%','.','[',']','*','+','-','?']);
 const CLASS_LETTERS=new Set(['a','c','d','l','p','s','u','w','x','z']);

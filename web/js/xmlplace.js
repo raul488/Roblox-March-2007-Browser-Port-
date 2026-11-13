@@ -285,9 +285,9 @@ function parseRbx(text){
     throw new Error('not a roblox XML file'+(pe? ': '+String(pe.textContent).trim().slice(0,200) : ''));
   }
   /* Every <Item> is registered exactly once: handle() registers `el` itself,
-   * then recurses into its <Item> children. (An earlier version called walk()
-   * on the child element, which registered only its grandchildren and silently
-   * dropped every other nesting level  caught by the headless test suite.) */
+   * then recurses into its <Item> children.  (Walking the child element
+   * instead registers only its grandchildren and drops every other nesting
+   * level.) */
   const instances=[], byRef=new Map();
   /* embedded-asset hash cache (Content <binary>/<hash>), see parseProps */
   const contentCache=new Map(), pendingHashes=[];

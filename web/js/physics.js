@@ -52,10 +52,10 @@ class Humanoid {
 
   /* ---- horizontal collisions are genuinely ORIENTED ----
    * The rig rotates to face the walk direction, so the fat ±2.02 arm span
-   * must never sit IN FRONT of the torso (the old world-axis box made the
-   * character stop well before walls when walking along X). The footprint
+   * must never sit IN FRONT of the torso (a world-axis box stops the
+   * character well before walls when walking along X). The footprint
    * is a yawed box (forward 0.72 = torso 0.5 + margin, sideways 1.06) and
-   * parts are tested as oriented boxes too  rotated walls no longer block
+   * parts are tested as oriented boxes too, so rotated walls do not block
    * at their fat enclosing AABB. 2D SAT over the four box axes. */
   _basis(yaw){
     const cy=Math.cos(yaw), sy=Math.sin(yaw);
@@ -167,14 +167,14 @@ class Humanoid {
     return this._sat2(k, this._partBox(o));
   }
   /* collider OBB cache: rebuilt only when the look's cf object is swapped
-   * (placePart assigns a fresh cf; static looks keep theirs forever)  the
-   * old code re-derived a box object for every collider on every query */
+   * (placePart assigns a fresh cf; static looks keep theirs forever), not
+   * re-derived for every collider on every query */
   _partBox(o){
     const c=o.__pbox;
     if (c && c.cf===(o.cf||null)) return c.box;
     const a=o.aabb;
-    /* look.cf.rot is the live row-major CFrame; look.rot was never assigned
-     * (the old check made every collider axis-aligned). */
+    /* look.cf.rot is the live row-major CFrame; look.rot is not assigned,
+     * so reading it alone would make every collider axis-aligned. */
     const rot=(o.cf&&o.cf.rot)||o.rot;
     let box;
     if (!rot){
@@ -182,10 +182,10 @@ class Humanoid {
       box={ cx:(a.min.x+a.max.x)/2, cz:(a.min.z+a.max.z)/2,
             fx:1, fz:0, rx:0, rz:1, hf:hx, hs:hz };
     } else if (this._tilted(o)) {
-      /* tilted part: the old local-Z footprint ignored the long axis when
-       * it was tilted out of the horizontal plane (the drawbridge plank
-       * became a 1×12 sliver at its centre).  Use the projected world
-       * footprint; walkable slopes are filtered by _leadSupport in _sweep. */
+      /* tilted part: a local-Z footprint ignores the long axis once it leaves
+       * the horizontal plane (the drawbridge plank became a 1×12 sliver at
+       * its centre).  Use the projected world footprint; walkable slopes are
+       * filtered by _leadSupport in _sweep. */
       const hx=(a.max.x-a.min.x)/2, hz=(a.max.z-a.min.z)/2;
       box={ cx:(a.min.x+a.max.x)/2, cz:(a.min.z+a.max.z)/2,
             fx:1, fz:0, rx:0, rz:1, hf:hx, hs:hz };
@@ -289,8 +289,8 @@ class Humanoid {
     if (!input.jump) this.jumpLatch=false;
     /* FUN_00611430: force = (50 − vy) * 5000, applied mass-scaled. The
      * integrator divides by the same mass, so the effective acceleration is
-     * (50 − vy) * 5000  NOT /112. The old /112 made the ramp's steady state
-     * ~48.9, so `jumping` never cleared and the character floated upward. */
+     * (50 − vy) * 5000, NOT /112 (which puts the ramp's steady state at
+     * ~48.9, so `jumping` never clears and the character floats upward). */
     if (this.jumping){
       this.jumpTime+=dt;
       if (v.y < this.jumpPower){
@@ -373,10 +373,10 @@ class Humanoid {
   _colliders(){ return this.world? this.world.colliders : []; }
 
   /* Candidate colliders around the character.  The dynamics spatial hash
-   * indexes every world look with exact AABBs; before this the humanoid ran
-   * five to six full collider scans per step (RobloxHQ: 8k parts).  The pad
-   * covers one step of travel, so the candidate set is a superset of the
-   * old linear scan.  Falls back to the full list before dynamics is up. */
+   * indexes every world look with exact AABBs, replacing five to six full
+   * collider scans per step (RobloxHQ: 8k parts).  The pad covers one step
+   * of travel, so the candidate set is a superset of a linear scan.  Falls
+   * back to the full list before dynamics is up. */
   _near(k, padXZ, padY){
     const D=window.RBLXdyn;
     if (D&&D._ready&&D._neighbors){
@@ -564,16 +564,16 @@ class Humanoid {
     const c=this.c, p=c.group.position;
     const myV=axis==='x'? this.velocity.x : this.velocity.z;
     /* No motion on this axis → no sweep. Resolving an axis the player did
-     * not move along is what ejected the character sideways out of long
-     * walls (the old code pushed to the nearer of the two faces). */
+     * not move along ejects the character sideways out of long walls
+     * (pushing to the nearer of the two faces). */
     if (Math.abs(myV)<1e-6) return;
     const feet=p.y-3.0;
     const k=this.yawBox();
     /* step-up assist is a GROUNDED behavior: on the ground, ledges within
-     * stepHeight are walked over (they never block horizontally  pushing
-     * the body out of the brick it stands on was the walk-on-plate
-     * teleport); airborne, only the flush-support epsilon is skipped so a
-     * jump still collides with low walls */
+     * stepHeight are walked over (they never block horizontally; pushing
+     * the body out of the brick it stands on is the walk-on-plate teleport);
+     * airborne, only the flush-support epsilon is skipped so a jump still
+     * collides with low walls */
     const stepBand=this.onGround? this.stepHeight : 0.06;
     for (const o of this._near(k,4,3)){
       if (o.destroyed || !o.aabb || o.__charIgnore) continue;
@@ -751,9 +751,9 @@ class Humanoid {
   }
 
   _groundProbe(){
-    /* Choose the highest top at/below the feet. The old probe returned the
-     * first collider whose vertical span contained feet-0.08, so a wall
-     * beside the player counted as ground. */
+    /* Choose the highest top at/below the feet, not the first collider
+     * whose vertical span contains feet-0.08 (a wall beside the player
+     * would count as ground). */
     const k=this.yawBox();
     const feet=k.yLo;
     let best=null, bestTop=-Infinity;
