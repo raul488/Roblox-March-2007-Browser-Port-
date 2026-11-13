@@ -26,8 +26,7 @@
 (function(){
 "use strict";
 
-function cfmulT(T, c){ /* inv(TorsoCF) * part : R^T*(p-Tpos), R^T*R_p */
-  const rx=T.rot, rt=[ rx[0],rx[3],rx[6], rx[1],rx[4],rx[7], rx[2],rx[5],rx[8] ];  // transpose
+function cfmulT(T, c){ /* inv(TorsoCF) * part : R^T*(p-Tpos), R^T*R_p */  const rx=T.rot, rt=[ rx[0],rx[3],rx[6], rx[1],rx[4],rx[7], rx[2],rx[5],rx[8] ];  // transpose
   const q=c.rot;
   const out=new Array(9);
   for (let i=0;i<3;i++) for (let j=0;j<3;j++){
@@ -65,6 +64,14 @@ const R6_JOINT={
   'Right Leg':{x:0.5,  y:-1,  z:0},
   'Left Leg': {x:-0.5, y:-1,  z:0},
 };
+
+/* The shipped face.png has a wide transparent border; the client shows the
+ * classic smiley stretched to the face.  Use a cropped/upscaled copy for the
+ * rig's face.png only; custom face assets keep their own framing. */
+function headFaceTextureUrl(url){
+  return /textures[\\/]face\.png$/i.test(String(url))
+    ? 'content/textures/face-classic.png' : url;
+}
 
 class Character {
   constructor(scene, world, playerName){
@@ -216,7 +223,7 @@ class Character {
         let decal=null;
         if (patch){
           decal=new THREE.Mesh(patch.geo,
-            new THREE.MeshLambertMaterial({ map:window.RBLXworld.mkTex(url),
+            new THREE.MeshLambertMaterial({ map:window.RBLXworld.mkTex(headFaceTextureUrl(url)),
               transparent:true, depthWrite:false,
               polygonOffset:true, polygonOffsetFactor:-2 }));
           decal.castShadow=false;
@@ -240,7 +247,7 @@ class Character {
           }
           const plane=new THREE.Mesh(
             new THREE.PlaneGeometry(w, h),
-            new THREE.MeshLambertMaterial({ map:window.RBLXworld.mkTex(url), transparent:true,
+            new THREE.MeshLambertMaterial({ map:window.RBLXworld.mkTex(headFaceTextureUrl(url)), transparent:true,
                                             polygonOffset:true, polygonOffsetFactor:-2 }));
           plane.position.set(0, py, z);
           plane.rotation.y=Math.PI;

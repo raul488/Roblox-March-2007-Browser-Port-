@@ -104,6 +104,8 @@ for (const face of faces) {
 }
 assert.ok(fs.existsSync(path.join(root,'web/content/textures/face.png')),
   'classic face texture missing');
+assert.ok(fs.existsSync(path.join(root,'web/content/textures/face-classic.png')),
+  'stretched classic face texture missing');
 
 /* Do not ship unreferenced PE stubs under the served web root. */
 function walk(dir) {

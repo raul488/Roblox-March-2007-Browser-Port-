@@ -221,7 +221,7 @@ function renderFaces(){
   if (!faceShelf) return;
   var list=FACES||[];
   var current=window.RBLXplayer.face||null;
-  var items=[{ value:null, label:'Classic face', preview:'content/textures/face.png' }];
+  var items=[{ value:null, label:'Classic face', preview:'content/textures/face-classic.png' }];
   for (var i=0;i<list.length;i++)
     items.push({ value:list[i].src, label:list[i].name, preview:list[i].src });
   renderShelf(faceShelf,items,current,setFace);
