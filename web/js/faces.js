@@ -9,7 +9,11 @@
  * content/textures/face.png.
  */
 window.RBLX_FACES = [
-  { id: 'miked', name: "Miked", src: 'content/faces/miked-face.png' },
+  /* Miked's recovered art is 256x135 (alpha y79..214), not square.  Center a
+   * 141px window on it (y76..217) so the shared face tile does not clip the
+   * chin; the square faces keep the default window. */
+  { id: 'miked', name: "Miked", src: 'content/faces/miked-face.png',
+    vStart: 0.15234375, vSpan: 0.55078125 },
   { id: 'cadi', name: "Cadi", src: 'content/faces/cadi-face.png' },
   { id: 'toazuku', name: "ToaZuku", src: 'content/faces/toazuku-face.png' },
   { id: 'police-modlers', name: "PoliceModlers", src: 'content/faces/police-modlers-face.png' },

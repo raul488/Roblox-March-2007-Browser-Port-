@@ -482,6 +482,16 @@ function build(size, scl){
  * UVs derived from their x/y position.  Mapping the texture onto the real
  * rounded surface makes it wrap like the 2007 Decal instead of floating in
  * front as a flat square.  The face is the -Z side (NormalId Front=5). */
+/* Face vertical tile.  The default 0.5-span window is centered on the
+ * shipped face.png art (visible pixels center v=0.5234).  Profiles in
+ * faces.js can override the window for non-square custom art. */
+const FACE_V0=0.2734375, FACE_VS=0.5;
+function faceV(baseV, profile){
+  const start=(profile&&profile.vStart!=null)?profile.vStart:FACE_V0;
+  const span=(profile&&profile.vSpan!=null)?profile.vSpan:FACE_VS;
+  return start + span*baseV;
+}
+
 function buildFace(size, scl){
   const b=build(size, scl);
   const src=b.geo;
@@ -506,16 +516,16 @@ function buildFace(size, scl){
   }
   const ry=(maxY-minY)||1;
   const uv=new Float32Array(used.length*2);
+  const baseV=new Float32Array(used.length);
   for (let i=0; i<used.length; i++){
     if (!used[i]) continue;
     // U follows the rounded front surface (normal.x), not raw x.  This is
     // the front-face angular span; +X stays on the texture's u=0 side.
     let u=0.5 - 0.6*nor[i*3];
     if (u<0) u=0; else if (u>1) u=1;
-    // Vertical tile from FUN_004e13d0: 0.5 span, shifted to center the
-    // shipped face.png art (visible pixels center at v=0.5234, not 0.5).
+    baseV[i]=(pos[i*3+1]-minY)/ry;
     uv[i*2]   = u;
-    uv[i*2+1] = 0.2734375 + 0.5 * ((pos[i*3+1]-minY)/ry);
+    uv[i*2+1] = faceV(baseV[i], null);
   }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos.slice(), 3));
@@ -523,8 +533,9 @@ function buildFace(size, scl){
   g.setAttribute('uv',       new THREE.BufferAttribute(uv, 2));
   g.setIndex(new THREE.BufferAttribute(new Uint16Array(outIdx), 1));
   g.computeBoundingSphere();
+  g.userData.faceBaseV=baseV;
   return { geo:g, dim:b.dim };
 }
 
-window.RBLXheadMesh = { P, N, I, build, buildFace };
+window.RBLXheadMesh = { P, N, I, build, buildFace, faceV, FACE_V0, FACE_VS };
 })();

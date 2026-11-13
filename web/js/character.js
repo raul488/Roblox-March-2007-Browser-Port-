@@ -68,6 +68,14 @@ const R6_JOINT={
 /* The face decal wraps on the generated HeadMesh; headmesh.buildFace()
  * applies the decomp 0.25..0.75 vertical UV tile to the shipped face.png. */
 
+/* The face shelf can carry a per-texture vertical window for art that is not
+ * square (Miked's recovered image is 256x135). */
+function faceProfile(url){
+  const list=window.RBLX_FACES||[];
+  for (let i=0;i<list.length;i++) if (list[i].src===url) return list[i];
+  return null;
+}
+
 class Character {
   constructor(scene, world, playerName){
     this.scene=scene;
@@ -249,7 +257,10 @@ class Character {
           mesh.add(plane);
           decal=plane;
         }
-        if (part.props.Name==='Head') this.headDecal=decal;
+        if (part.props.Name==='Head'){
+          this.headDecal=decal;
+          this._faceBaseV=patch?patch.geo.userData.faceBaseV:null;
+        }
       } else {
         // torso graphic plane on the box front (-Z).  The default decal IS
         // the classic T-shirt slot (the shipped rig's torso logo); a
@@ -299,6 +310,16 @@ class Character {
    * The shipped face is a Decal on the Head; a chosen face replaces only its
    * texture.  null restores the rig's classic face.  Used by the start-page
    * face shelf and by remote avatar profiles. */
+  _applyFaceProfile(profile){
+    const decal=this.headDecal, base=this._faceBaseV;
+    if (!decal || !base || !decal.geometry) return;
+    const uv=decal.geometry.attributes.uv;
+    if (!uv) return;
+    for (let i=0;i<base.length;i++)
+      uv.array[i*2+1]=window.RBLXheadMesh.faceV(base[i], profile);
+    uv.needsUpdate=true;
+  }
+
   applyFace(url){
     if (!this.headDecal) return;
     if (!url){
@@ -307,6 +328,7 @@ class Character {
         this.headDecal.material.needsUpdate=true;
         this.headDecal.visible=true;
       }
+      this._applyFaceProfile(null);
       this.faceUrl=null;
       return;
     }
@@ -317,6 +339,7 @@ class Character {
     this.headDecal.material.transparent=true;
     this.headDecal.material.needsUpdate=true;
     this.headDecal.visible=true;
+    this._applyFaceProfile(faceProfile(url));
   }
 
   /* Overhead tag  name plus, when damaged, the decomp's billboard health

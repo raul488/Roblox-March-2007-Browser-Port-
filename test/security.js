@@ -99,6 +99,10 @@ assert.ok(Array.isArray(faces) && faces.length === 4, 'Homestead face list is wr
 for (const name of ['Miked', 'Cadi', 'ToaZuku', 'PoliceModlers']) {
   assert.ok(faces.some(f => f.name === name), 'Homestead face missing: ' + name);
 }
+const miked=faces.find(f => f.id === 'miked');
+assert.ok(miked && Math.abs(miked.vStart-0.15234375) < 1e-9 &&
+  Math.abs(miked.vSpan-0.55078125) < 1e-9,
+  'Miked face vertical window is missing');
 for (const face of faces) {
   assert.ok(/^content\/faces\/[a-z0-9-]+\.png$/.test(face.src),
     'unexpected face path: ' + face.src);
