@@ -66,7 +66,7 @@ const R6_JOINT={
 };
 
 /* The face decal wraps on the generated HeadMesh; headmesh.buildFace()
- * supplies the UVs.  The shipped face.png is used as-is. */
+ * applies the decomp 0.25..0.75 vertical UV tile to the shipped face.png. */
 
 class Character {
   constructor(scene, world, playerName){
