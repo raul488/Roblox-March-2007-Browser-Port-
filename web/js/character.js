@@ -207,38 +207,47 @@ class Character {
       const url=content.url||content.binary;
       if (!url) continue;
       if (sm && sm.props.MeshType===0){
-        // classic face patch on the front (-Z). The decomp head is a rounded
-        // cube; the square face texture has a wide transparent border, so a
-        // 1.12×bbox plane gives the 2007 screenshot smiley size. The plane
-        // sits just proud of the mesh bbox with a polygon offset to defeat
-        // z-fight; it is a flat-plane approximation, not a mesh projection.
-        const d=(this.headDesc&&this.headDesc.dim)||null;
-        const kind=this.headDesc&&this.headDesc.kind;
-        const rx=size.x*0.5*(sm.props.Scale.x||1), ry=size.y*0.5*(sm.props.Scale.y||1), rz=size.z*0.5*(sm.props.Scale.z||1);
-        let w, h, z, py;
-        if (d && kind==='decomp'){
-          // The classic head is the rounded cube from the engine's
-          // HeadBuilder.  The decal texture is square with a wide transparent
-          // border; 1.12*dim puts the visible smiley at roughly 0.61 x 0.48
-          // on the 1.25 head, the size seen in 2007 screenshots.
-          w=d.x*1.12; h=d.y*1.12;
-          z=-d.z*0.5-0.015;
-          py=d.y*0.02;
+        // Face decal on the generated HeadMesh.  The decal is projected onto
+        // the actual rounded front surface with UVs, so it wraps over the
+        // head instead of floating in front as a flat square.
+        const scale=sm.props.Scale||{x:1,y:1,z:1};
+        const patch=window.RBLXheadMesh&&window.RBLXheadMesh.buildFace
+          ? window.RBLXheadMesh.buildFace(size, scale) : null;
+        let decal=null;
+        if (patch){
+          decal=new THREE.Mesh(patch.geo,
+            new THREE.MeshLambertMaterial({ map:window.RBLXworld.mkTex(url),
+              transparent:true, depthWrite:false,
+              polygonOffset:true, polygonOffsetFactor:-2 }));
+          decal.castShadow=false;
+          mesh.add(decal);
         } else {
-          // file-mesh / legacy fallback sizing
-          w=d? d.x*0.62 : rx*1.55;
-          h=d? d.y*0.95 : ry*1.6;
-          z=-(d? d.z*0.5 : rz*1.02) - 0.015;
-          py=d? d.y*0.02 : 0;
+          // only reached if js/headmesh.js failed to load; keep the old
+          // flat fallback so the character still has a face.
+          const d=(this.headDesc&&this.headDesc.dim)||null;
+          const kind=this.headDesc&&this.headDesc.kind;
+          const rx=size.x*0.5*(scale.x||1), ry=size.y*0.5*(scale.y||1), rz=size.z*0.5*(scale.z||1);
+          let w, h, z, py;
+          if (d && kind==='decomp'){
+            w=d.x*1.12; h=d.y*1.12;
+            z=-d.z*0.5-0.015;
+            py=d.y*0.02;
+          } else {
+            w=d? d.x*0.62 : rx*1.55;
+            h=d? d.y*0.95 : ry*1.6;
+            z=-(d? d.z*0.5 : rz*1.02) - 0.015;
+            py=d? d.y*0.02 : 0;
+          }
+          const plane=new THREE.Mesh(
+            new THREE.PlaneGeometry(w, h),
+            new THREE.MeshLambertMaterial({ map:window.RBLXworld.mkTex(url), transparent:true,
+                                            polygonOffset:true, polygonOffsetFactor:-2 }));
+          plane.position.set(0, py, z);
+          plane.rotation.y=Math.PI;
+          mesh.add(plane);
+          decal=plane;
         }
-        const plane=new THREE.Mesh(
-          new THREE.PlaneGeometry(w, h),
-          new THREE.MeshLambertMaterial({ map:window.RBLXworld.mkTex(url), transparent:true,
-                                          polygonOffset:true, polygonOffsetFactor:-2 }));
-        plane.position.set(0, py, z);
-        plane.rotation.y=Math.PI;
-        mesh.add(plane);
-        if (part.props.Name==='Head') this.headDecal=plane;
+        if (part.props.Name==='Head') this.headDecal=decal;
       } else {
         // torso graphic plane on the box front (-Z).  The default decal IS
         // the classic T-shirt slot (the shipped rig's torso logo); a

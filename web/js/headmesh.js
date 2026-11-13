@@ -478,5 +478,49 @@ function build(size, scl){
   return { geo:g, dim:{ x:sx, y:sy, z:sz } };
 }
 
-window.RBLXheadMesh = { P, N, I, build };
+/* Face decal patch: the front-facing triangles of the same HeadMesh, with
+ * UVs derived from their x/y position.  Mapping the texture onto the real
+ * rounded surface makes it wrap like the 2007 Decal instead of floating in
+ * front as a flat square.  The face is the -Z side (NormalId Front=5). */
+function buildFace(size, scl){
+  const b=build(size, scl);
+  const src=b.geo;
+  const pos=src.attributes.position.array;
+  const nor=src.attributes.normal.array;
+  const idx=src.index.array;
+  const used=new Uint8Array(pos.length/3);
+  const outIdx=[];
+  for (let i=0; i<idx.length; i+=3){
+    const a=idx[i], c=idx[i+1], d=idx[i+2];
+    if (nor[a*3+2] < -0.2 && nor[c*3+2] < -0.2 && nor[d*3+2] < -0.2){
+      outIdx.push(a,c,d);
+      used[a]=used[c]=used[d]=1;
+    }
+  }
+  if (!outIdx.length) return null;
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  for (let i=0; i<used.length; i++){
+    if (!used[i]) continue;
+    const x=pos[i*3], y=pos[i*3+1];
+    if (x<minX) minX=x; if (x>maxX) maxX=x;
+    if (y<minY) minY=y; if (y>maxY) maxY=y;
+  }
+  const rx=(maxX-minX)||1, ry=(maxY-minY)||1;
+  const uv=new Float32Array(used.length*2);
+  for (let i=0; i<used.length; i++){
+    if (!used[i]) continue;
+    // Facing the -Z side: +X is screen-left, so u runs from +X to -X.
+    uv[i*2]   = (maxX-pos[i*3])/rx;
+    uv[i*2+1] = (pos[i*3+1]-minY)/ry;
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos.slice(), 3));
+  g.setAttribute('normal',   new THREE.BufferAttribute(nor.slice(), 3));
+  g.setAttribute('uv',       new THREE.BufferAttribute(uv, 2));
+  g.setIndex(new THREE.BufferAttribute(new Uint16Array(outIdx), 1));
+  g.computeBoundingSphere();
+  return { geo:g, dim:b.dim };
+}
+
+window.RBLXheadMesh = { P, N, I, build, buildFace };
 })();
