@@ -509,6 +509,7 @@ function buildFace(size, scl, profile){
   const useX=profile&&profile.uMode==='x';
   const v0=profile&&profile.vStart!=null?profile.vStart:0.2734375;
   const vs=profile&&profile.vSpan!=null?profile.vSpan:0.5;
+  const us=profile&&profile.uScale!=null?profile.uScale:1;
   const uv=new Float32Array(used.length*2);
   for (let i=0; i<used.length; i++){
     if (!used[i]) continue;
@@ -518,6 +519,7 @@ function buildFace(size, scl, profile){
       u=0.5 - 0.6*nor[i*3];
       if (u<0) u=0; else if (u>1) u=1;
     }
+    if (us!==1) u=0.5 + (u-0.5)*us;
     uv[i*2]   = u;
     uv[i*2+1] = v0 + vs*((pos[i*3+1]-minY)/ry);
   }

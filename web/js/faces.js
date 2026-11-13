@@ -9,12 +9,11 @@
  * content/textures/face.png.
  */
 window.RBLX_FACES = [
-  /* Miked's recovered art is 256x135 (alpha y79..214), not square.  Use the
-   * classic face's display ratio (art occupies ~69% of the patch height) and
-   * center a 196px window on it: y48..245 maps to v 0.0442..0.8113.  His art
-   * spans the full texture width, so use the linear x U mapping. */
+  /* Miked's recovered art is 256x135 (alpha y79..214), not square.  Center a
+   * 218px vertical window on it and pull the UVs 15% toward the center so
+   * the face sits smaller than the head edges. */
   { id: 'miked', name: "Miked", src: 'content/faces/miked-face.png',
-    vStart: 0.044212, vSpan: 0.767045, uMode: 'x' },
+    vStart: 0.002734, vSpan: 0.85, uMode: 'x', uScale: 0.85 },
   { id: 'cadi', name: "Cadi", src: 'content/faces/cadi-face.png' },
   { id: 'toazuku', name: "ToaZuku", src: 'content/faces/toazuku-face.png' },
   { id: 'police-modlers', name: "PoliceModlers", src: 'content/faces/police-modlers-face.png' },
