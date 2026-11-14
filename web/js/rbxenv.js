@@ -2625,18 +2625,35 @@ function tickContacts(dt){
     if (!look.anchored) v.y-=196.2*dt;              /* loose-part gravity */
     const rot=hasRV? spinPartRotation(look.cf.rot, rv, dt) : look.cf.rot;
     placePart(inst, {pos:{x:look.cf.pos.x+v.x*dt, y:look.cf.pos.y+v.y*dt, z:look.cf.pos.z+v.z*dt}, rot});
-    /* terrain probe: the shipped raycastBoxes probe returns the look */
+    /* terrain probe: the shipped raycastBoxes probe returns the look.
+     * Contact reflects the velocity off the hit face using the part's
+     * Elasticity (FUN_005ed340), so pellets/skulls bounce instead of
+     * stopping dead on whatever they graze. */
     const rad=Math.max(look.size.x,look.size.y,look.size.z)*0.55;
     const hit=w.raycastBoxes? w.raycastBoxes(look.cf.pos, {radius:rad}) : null;
     if (hit&&hit!==look){
       if (!look.__tc_terrain){
         look.__tc_terrain=true;
-        v.x=v.y=v.z=0;                              /* first contact stops the shell */
-        if (rv){ rv.x=rv.y=rv.z=0; }
         fireTouched(inst, wrap(hit.part));
       }
-      v.x=v.y=v.z=0;
-      if (rv){ rv.x=rv.y=rv.z=0; }
+      const face=w.partFaceAt? w.partFaceAt(hit, look.cf.pos) : null;
+      const n=face? face.normal : {x:0,y:1,z:0};
+      const vn=v.x*n.x+v.y*n.y+v.z*n.z;
+      if (vn<0){
+        const e=(window.RBLXdyn&&window.RBLXdyn.restitutionOf)
+          ? window.RBLXdyn.restitutionOf(look) : 0.5;
+        if (n.y>0.7 && -(1+e)*vn<7){
+          /* rest/slide on an up-facing surface: drop the bounce the gravity
+           * tick would otherwise re-trigger forever (7 > one tick at max
+           * restitution, so a real fall still bounces) */
+          v.x-=vn*n.x; v.y-=vn*n.y; v.z-=vn*n.z;
+          if (rv){ rv.x=rv.y=rv.z=0; }
+        } else {
+          v.x-=(1+e)*vn*n.x;
+          v.y-=(1+e)*vn*n.y;
+          v.z-=(1+e)*vn*n.z;
+        }
+      }
     } else {
       look.__tc_terrain=false;
     }

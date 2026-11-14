@@ -1352,6 +1352,9 @@ class Dynamics {
     for (const m of a.members) if (m&&m.scriptMover&&!m.destroyed) return true;
     return false;
   }
+  /* Elasticity → restitution scalar (FUN_005ed340), shared by the contact
+   * force solver and rbxenv's mover bounce. */
+  restitutionOf(look){ return elasticFactor(elasticityOf(look)); }
   /* World AABBs of the character's body parts.  The classic rig parts are
    * real Parts in Workspace, so makeJoints() can weld a touched model to
    * the torso even though the port renders the rig separately.

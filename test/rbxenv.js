@@ -251,6 +251,68 @@ touchChar.group.position.y=3;               /* re-enter */
 E.fireStepped(1/60); L.sched.tick(0);
 assert.strictEqual(padEnv.G.get('hits'),2);
 
+/* A script-Velocity projectile bounces off terrain instead of sticking to
+ * the first thing it touches. */
+E.forPlace({instances:[]}, null, null, null);
+const pelletInst=E.mkInst('Part','Pellet');
+const wallInst=E.mkInst('Part','Wall');
+const wallLook={
+  part:wallInst, destroyed:false, size:{x:4,y:4,z:4},
+  cf:{pos:{x:5,y:3,z:0}, rot:[1,0,0,0,1,0,0,0,1]},
+  aabb:{min:{x:3,y:1,z:-2},max:{x:7,y:5,z:2}},
+  anchored:true, canCollide:true, entry:{rgb:[128,128,128],id:194}
+};
+const pelletLook={
+  part:pelletInst, destroyed:false, size:{x:1,y:1,z:1},
+  cf:{pos:{x:2,y:3,z:0}, rot:[1,0,0,0,1,0,0,0,1]},
+  aabb:{min:{x:1.5,y:2.5,z:-0.5},max:{x:2.5,y:3.5,z:0.5}},
+  obj:{}, anchored:false, canCollide:true, elasticity:0.5,
+  velocity:{x:10,y:0,z:0}, scriptMover:true
+};
+E.state.world={
+  partLook:new Map([[pelletInst,pelletLook],[wallInst,wallLook]]),
+  colliders:[wallLook],
+  raycastBoxes:p=>(p.x>=2.4? wallLook : null),
+  partFaceAt:()=>({normal:{x:-1,y:0,z:0}})
+};
+E.state.movers.add(pelletLook);
+const pelletEnv=L.makeEnv({pellet:E.wrap(pelletInst)});
+pelletEnv.G.set('hits',0);
+L.run(L.parse('pellet.Touched:connect(function() hits=hits+1 end)'),()=>{});
+L.sched.tick(0);
+for (let i=0;i<10;i++){ E.fireStepped(1/60); L.sched.tick(0); }
+assert.ok(pelletLook.velocity.x<0,'projectile must bounce off a wall, not stop');
+assert.strictEqual(pelletEnv.G.get('hits'),1,'Touched fires once per contact');
+const bounceX=pelletLook.cf.pos.x;
+E.fireStepped(1/60); L.sched.tick(0);
+assert.ok(pelletLook.cf.pos.x<bounceX,'projectile must leave the wall after bouncing');
+
+/* A slow up-facing hit settles: the gravity tick must not re-bounce it. */
+E.state.movers.delete(pelletLook);
+const floorInst=E.mkInst('Part','Floor');
+const dropInst=E.mkInst('Part','Drop');
+const floorLook={
+  part:floorInst, destroyed:false, size:{x:20,y:1,z:20},
+  cf:{pos:{x:0,y:-0.5,z:0}, rot:[1,0,0,0,1,0,0,0,1]},
+  aabb:{min:{x:-10,y:-1,z:-10},max:{x:10,y:0,z:10}},
+  anchored:true, canCollide:true, entry:{rgb:[128,128,128],id:194}
+};
+const dropLook={
+  part:dropInst, destroyed:false, size:{x:1,y:1,z:1},
+  cf:{pos:{x:0,y:0.5,z:0}, rot:[1,0,0,0,1,0,0,0,1]},
+  aabb:{min:{x:-0.5,y:0,z:-0.5},max:{x:0.5,y:1,z:0.5}},
+  obj:{}, anchored:false, canCollide:true, elasticity:0.5,
+  velocity:{x:2,y:0,z:0}, scriptMover:true
+};
+E.state.world.partLook.set(floorInst,floorLook);
+E.state.world.partLook.set(dropInst,dropLook);
+E.state.world.raycastBoxes=p=>(p.y<=0.55? floorLook : null);
+E.state.world.partFaceAt=()=>({normal:{x:0,y:1,z:0}});
+E.state.movers.add(dropLook);
+E.fireStepped(1/60); L.sched.tick(0);
+assert.strictEqual(dropLook.velocity.y,0,'a slow floor hit must settle, not bounce');
+assert.ok(dropLook.velocity.x>0,'settling must keep the tangential speed');
+
 /* The start-page face is applied through the bridge on spawn. */
 const faceCalls=[];
 E.state.character={ applyFace(url){ faceCalls.push(url); } };
