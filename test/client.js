@@ -16,6 +16,7 @@ const assert=require('assert');
 const root=path.join(__dirname,'..');
 const html=fs.readFileSync(path.join(root,'web/index.html'),'utf8');
 const character=fs.readFileSync(path.join(root,'web/js/character.js'),'utf8');
+const startpage=fs.readFileSync(path.join(root,'web/js/startpage.js'),'utf8');
 
 function cssBlock(id){
   const re=new RegExp('#'+id+'\\{([^}]*)\\}');
@@ -78,5 +79,9 @@ assert.ok(/fillText\(name, x, y\)/.test(character) && /textBaseline='bottom'/.te
 /* Torso T-shirt/logo decal must cover the whole front face. */
 assert.ok(/const w=size\.x, h=size\.y, z=-\(size\.z\*0\.5\+0\.012\)/.test(character),
   'torso decal plane must span the full face (no 0.92 brick border)');
+
+/* T-shirt shelf: vertical wheel must scroll the row sideways. */
+assert.ok(/addEventListener\('wheel'/.test(startpage) && /scrollLeft\+=d/.test(startpage),
+  'T-shirt shelf has no wheel-to-horizontal scrolling');
 
 console.log('ALL client visual assertions PASSED');

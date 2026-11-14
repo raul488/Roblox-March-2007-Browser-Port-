@@ -1,10 +1,12 @@
 /* Classic Roblox T-shirts (2006-early 2007 catalog textures).
  * Textures from the Roblox Wiki catalog pages; see AGENTS.md.
- * The first ten entries are the custom shirts recovered from the January
- * 2007 Homestead Furniture Making Contest avatars.  Asset IDs: Miked
- * 1000022, PoliceModlers 1316090, ToaZuku 1004046, MrDoomBringer 7510129917,
- * Anaminus 1001936, Rocks25 7520577426, Cadi 8514082055, Koopa 1026266,
- * DrWaffles 8642429538; Cadi's unused shirt is from the Wiki extraction. */
+ * 64 entries.  The first ten are the custom shirts recovered from the
+ * January 2007 Homestead Furniture Making Contest avatars.  Asset IDs:
+ * Miked 1000022, PoliceModlers 1316090, ToaZuku 1004046, MrDoomBringer
+ * 7510129917, Anaminus 1001936, Rocks25 7520577426, Cadi 8514082055,
+ * Koopa 1026266, DrWaffles 8642429538; Cadi's unused shirt is from the Wiki
+ * extraction.  The remaining 54 are the classic catalog shirts, including
+ * the 2007 ASSERT/Got Root/Sword Fight/Builder's Club set. */
 window.RBLX_TSHIRTS = [
   { id: 'homestead-miked', name: "Miked's Shirt", src: 'content/tshirts/miked-shirt.png' },
   { id: 'homestead-police-modlers', name: "PoliceModlers' Shirt", src: 'content/tshirts/police-modlers-shirt.png' },
@@ -50,4 +52,24 @@ window.RBLX_TSHIRTS = [
   { id: 'vest', name: 'Vest', src: 'content/tshirts/vest.png' },
   { id: 'viking-torso', name: 'Viking Torso', src: 'content/tshirts/viking-torso.png' },
   { id: 'voidstar', name: 'Voidstar', src: 'content/tshirts/voidstar.png' },
+  { id: 'asserthax0r', name: 'ASSERT(hax0r);', src: 'content/tshirts/asserthax0r.png' },
+  { id: 'all-your-base', name: 'All Your Base Are Belong To Us!', src: 'content/tshirts/all-your-base.png' },
+  { id: 'awesome', name: 'Awesome', src: 'content/tshirts/awesome.png' },
+  { id: 'ggnore', name: 'GGNORE', src: 'content/tshirts/ggnore.png' },
+  { id: 'got-root', name: 'Got Root?', src: 'content/tshirts/got-root.png' },
+  { id: 'i-has-a-bucket', name: 'I Has A Bucket!', src: 'content/tshirts/i-has-a-bucket.png' },
+  { id: 'builders-club', name: 'I Wish I Was in Builder\'s Club', src: 'content/tshirts/builders-club.png' },
+  { id: 'master-hand', name: 'Master Hand', src: 'content/tshirts/master-hand.png' },
+  { id: 'masterbuilder', name: 'MasterBuilder', src: 'content/tshirts/masterbuilder.png' },
+  { id: 'bucket-stealing', name: 'NOO THEY BE STEALING MY BUCKET', src: 'content/tshirts/bucket-stealing.png' },
+  { id: 'smiley', name: 'Smiley', src: 'content/tshirts/smiley.png' },
+  { id: 'sword-fight-ring-of-fire', name: 'Sword Fight on the Heights Ring of Fire', src: 'content/tshirts/sword-fight-ring-of-fire.png' },
+  { id: 'teapot-sign', name: 'Teapot Sign', src: 'content/tshirts/teapot-sign.png' },
+  { id: 'telamon-poem', name: 'Telamon\'s Silly ROBUX Poem', src: 'content/tshirts/telamon-poem.png' },
+  { id: 'what-in-the-world', name: 'What In The World', src: 'content/tshirts/what-in-the-world.png' },
+  { id: 'render', name: 'Render', src: 'content/tshirts/render.png' },
+  { id: 'roblex-board', name: 'RoblEX Board Member Badge', src: 'content/tshirts/roblex-board.png' },
+  { id: 'warrior', name: 'Warrior', src: 'content/tshirts/warrior.png' },
+  { id: 'viking-shirt', name: 'Viking Shirt', src: 'content/tshirts/viking-shirt.png' },
+  { id: 'fullmailbox', name: 'FullMailbox', src: 'content/tshirts/fullmailbox.png' },
 ];

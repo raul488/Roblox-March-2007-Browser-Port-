@@ -25,10 +25,11 @@ Place data, sounds, character.rbxm and three.js r128 are all embedded in
 `web/`. Play Solo needs no network and no install.
 
 The start page's avatar panel includes a free, horizontally scrolling shelf
-of 44 T-shirts (34 documented 2006-early-2007 catalog shirts, 10 custom
-Homestead contest shirts; textures under `web/content/tshirts/`) and a Face
-shelf with the classic smiley plus the custom faces recovered from the 2007
-Homestead contest avatars. There is no image upload; shirts are picked from
+of 64 T-shirts (54 documented classic catalog shirts, many from 2007, plus
+10 custom Homestead contest shirts; textures under `web/content/tshirts/`)
+and a Face shelf with the classic smiley plus the custom faces recovered from
+the 2007 Homestead contest avatars. The T-shirt row scrolls sideways with the
+mouse wheel. There is no image upload; shirts are picked from
 the shelf or `None`. Old data-URL shirts saved by earlier builds are cleared
 on load.
 

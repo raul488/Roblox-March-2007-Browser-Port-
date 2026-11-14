@@ -251,6 +251,24 @@ function setShirt(src){
 renderFaces();
 renderShirt();
 
+/* Horizontal shelves: a vertical wheel scrolls the row sideways instead of
+ * forcing a drag on the scrollbar.  No-ops when the row does not overflow,
+ * so the page still scrolls normally. */
+function bindShelfWheel(shelf){
+  if (!shelf) return;
+  shelf.addEventListener('wheel', function(e){
+    if (shelf.scrollWidth <= shelf.clientWidth) return;
+    var d=Math.abs(e.deltaX)>Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    if (!d) return;
+    if (e.deltaMode===1) d*=16;
+    else if (e.deltaMode===2) d*=shelf.clientWidth;
+    shelf.scrollLeft+=d;
+    e.preventDefault();
+  }, {passive:false});
+}
+bindShelfWheel(faceShelf);
+bindShelfWheel(shirtShelf);
+
 /* ---------------------------- logo bounce ----------------------------- */
 /* Free fall under gravity from a small apex; each ground contact adds a
  * squash impulse to a damped spring (scaleY 1-sq / scaleX 1+0.55*sq at the
