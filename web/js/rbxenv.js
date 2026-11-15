@@ -2681,17 +2681,19 @@ function tickContacts(dt){
       if (vn<0){
         const e=(window.RBLXdyn&&window.RBLXdyn.restitutionOf)
           ? window.RBLXdyn.restitutionOf(look) : 0.5;
-        /* split the incoming velocity into normal and tangential; the
-         * normal reflects at the part's Elasticity, the tangential is cut
-         * by Coulomb friction (mu * normal impulse), so a projectile loses
-         * speed on every hit instead of sliding forever */
-        const outgoing=(n.y>0.7 && -(1+e)*vn<7)? 0 : -(1+e)*vn;
+        /* v' = v - (1+e)(v·n)n: the normal speed after the hit is e|vn|,
+         * not (1+e)|vn| (which would add energy on every bounce) */
+        const bounce=-e*vn;
+        const outgoing=(n.y>0.7 && bounce<7)? 0 : bounce;
         const tx=v.x-vn*n.x, ty=v.y-vn*n.y, tz=v.z-vn*n.z;
         const ts=Math.hypot(tx,ty,tz);
         const mu0=look.friction;
         const mu=(typeof mu0==='number'&&isFinite(mu0)&&mu0>=0)
           ? Math.min(1,mu0) : 0.3;
-        const s=ts>1e-9? Math.max(0, ts-mu*Math.abs(vn))/ts : 0;
+        /* Coulomb friction follows the normal impulse: the bounce reverses
+         * the normal speed, a resting hit only cancels the gravity tick */
+        const jn=(outgoing? (1+e) : 1)*Math.abs(vn);
+        const s=ts>1e-9? Math.max(0, ts-mu*jn)/ts : 0;
         v.x=outgoing*n.x+tx*s;
         v.y=outgoing*n.y+ty*s;
         v.z=outgoing*n.z+tz*s;

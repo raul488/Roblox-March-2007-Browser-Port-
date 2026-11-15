@@ -311,7 +311,7 @@ E.state.world.partLook.set(dropInst,dropLook);
 E.state.world.raycastBoxes=p=>(p.y<=0.55? floorLook : null);
 E.state.world.rayHit=(from,dir,maxDist,ex)=>{
   if (ex&&(ex.has(floorLook)||ex.has(floorInst))) return null;
-  if (dir.y<-0.9&&from.y>=0) return { look:floorLook, distance:from.y };
+  if (dir.y<-0.9&&from.y>=0&&from.y<=maxDist) return { look:floorLook, distance:from.y };
   return null;
 };
 E.state.world.partFaceAt=()=>({normal:{x:0,y:1,z:0}});
@@ -355,6 +355,38 @@ E.state.movers.add(fastLook);
 E.fireStepped(1/60); L.sched.tick(0);
 assert.ok(fastLook.cf.pos.x<4,'fast mover tunnelled through the thin wall');
 assert.ok(fastLook.velocity.x<0,'fast mover must reflect off the thin wall');
+
+/* A bounce must decay: Elasticity 0.5 returns 0.5x the impact speed, not
+ * (1+e)x (which would make every bounce faster than the last). */
+E.state.movers.delete(fastLook);
+const bounceInst=E.mkInst('Part','Bounce');
+const bounceLook={
+  part:bounceInst, destroyed:false, size:{x:1,y:1,z:1},
+  cf:{pos:{x:0,y:2,z:0}, rot:[1,0,0,0,1,0,0,0,1]},
+  aabb:{min:{x:-0.5,y:1.5,z:-0.5},max:{x:0.5,y:2.5,z:0.5}},
+  obj:{}, anchored:false, canCollide:true, elasticity:0.5, friction:0.3,
+  velocity:{x:0,y:-20,z:0}, scriptMover:true
+};
+E.state.world.partLook.set(bounceInst,bounceLook);
+E.state.world.rayHit=(from,dir,maxDist,ex)=>{
+  if (ex&&(ex.has(floorLook)||ex.has(floorInst))) return null;
+  if (dir.y<-0.9&&from.y>=0&&from.y<=maxDist) return { look:floorLook, distance:from.y };
+  return null;
+};
+E.state.world.partFaceAt=()=>({normal:{x:0,y:1,z:0}});
+E.state.movers.add(bounceLook);
+let impact=0;
+for (let i=0;i<120&&!bounceLook.__tc_terrain;i++){
+  const vy=bounceLook.velocity.y;
+  E.fireStepped(1/60); L.sched.tick(0);
+  if (bounceLook.__tc_terrain) impact=Math.abs(vy-196.2/60);
+}
+assert.ok(impact>0,'the drop never reached the floor');
+assert.ok(bounceLook.velocity.y>0&&bounceLook.velocity.y<=0.5*impact+0.1,
+  'bounce must decay at Elasticity 0.5, got '+bounceLook.velocity.y+' from '+impact);
+for (let i=0;i<400;i++){ E.fireStepped(1/60); L.sched.tick(0); }
+assert.ok(Math.abs(bounceLook.velocity.y)<1e-6,'the decaying bounce must settle');
+assert.ok(Math.abs(bounceLook.cf.pos.y-0.55)<1e-6,'the settled bounce must rest on the floor');
 
 /* The start-page face is applied through the bridge on spawn. */
 const faceCalls=[];
