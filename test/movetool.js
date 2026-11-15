@@ -9,6 +9,7 @@ const path=require('path');
 
 global.window={};
 global.performance={ now:()=>0 };
+window.Sounds={ sound(){}, makeLoop(){ return {play(){},pause(){},stop(){}}; } };
 
 function mkLook(name, size, pos){
   const h={x:size.x/2, y:size.y/2, z:size.z/2};
@@ -20,6 +21,23 @@ function mkLook(name, size, pos){
           max:{x:pos.x+h.x,y:pos.y+h.y,z:pos.z+h.z}},
     obj:{}, entry:{rgb:[128,128,128], id:194}, surf:[0,0,0,0,0,0]
   };
+}
+
+/* real box face pick, so the tests exercise the clicked face */
+function faceAt(look, point){
+  const P=look.cf.pos, S=look.size;
+  const d=[point.x-P.x, point.y-P.y, point.z-P.z];
+  const h=[S.x/2, S.y/2, S.z/2];
+  let axis=0, best=-1;
+  for (let i=0;i<3;i++){
+    const v=Math.abs(d[i])/Math.max(h[i],1e-9);
+    if (v>best){ best=v; axis=i; }
+  }
+  const sign=d[axis]>=0? 1 : -1;
+  const ax=['x','y','z'][axis];
+  const normal={x:0,y:0,z:0}; normal[ax]=sign;
+  const center={x:P.x,y:P.y,z:P.z}; center[ax]+=sign*h[axis];
+  return { axis, sign, half:h[axis], center, normal };
 }
 
 let src, targ, hitPoint;
@@ -44,13 +62,8 @@ function runDrag(binType, sourceSize, targetSize, hit){
   hitPoint=hit;
   const world={
     colliders:[src,targ],
-    pickPartRaw(){ return { look:src, hit:{x:0,y:6,z:0} }; },
-    partFaceAt(look){
-      if (look===targ) return { axis:1, sign:1, half:targetSize.y/2,
-        center:{x:0,y:5+targetSize.y/2,z:0}, normal:{x:0,y:1,z:0} };
-      return { axis:1, sign:1, half:sourceSize.y/2,
-        center:{x:0,y:6+sourceSize.y/2,z:0}, normal:{x:0,y:1,z:0} };
-    },
+    pickPartRaw(){ return { look:src, hit:{x:0,y:6+sourceSize.y/2,z:0} }; },
+    partFaceAt:faceAt,
     rayHit(){ return { look:targ, hit:{x:hit.x, y:hit.y, z:hit.z} }; },
     rayFromCamera(){ return { origin:{x:0,y:20,z:0}, dir:{x:0,y:-1,z:0} }; }
   };
@@ -120,6 +133,51 @@ function runDrag(binType, sourceSize, targetSize, hit){
   tm.keyDown('t');
   assert.ok(src.cf.rot.some((v,i)=>Math.abs(v-afterFirst[i])>1e-6),
     'releaseKeys did not clear the latched key');
+}
+
+
+/* Clone: spawn out of the clicked face (not into the part above), drop the
+ * source velocity, hold it out of physics while dragged, and start a drag on
+ * the clone itself. */
+{
+  src=mkLook('Brick', {x:1,y:1,z:1}, {x:0,y:6,z:0});
+  src.anchored=false; src.part.props.Anchored=false;
+  src.part.props.Velocity={x:30,y:30,z:30};
+  let cloneLook=null;
+  const world={
+    colliders:[src],
+    pickPartRaw(){ return { look:src, hit:{x:0,y:6,z:-0.5} }; },
+    partFaceAt:faceAt,
+    rayHit(){ return null; },
+    rayFromCamera(){ return { origin:{x:0,y:20,z:0}, dir:{x:0,y:-1,z:0} }; },
+    buildPart(clone){
+      cloneLook=mkLook('Clone', clone.props.size, clone.props.CFrame.pos);
+      cloneLook.cf=clone.props.CFrame;
+      cloneLook.anchored=clone.props.Anchored!==false;
+      cloneLook.velocity=clone.props.Velocity;
+      return cloneLook;
+    }
+  };
+  const tm=new TM({}, world, {});
+  tm.activeInst={cls:'HopperBin', props:{Name:'Clone'}, children:[]};
+  tm.activeKind='HopperBin'; tm.binType=3; tm.hasScript=false; tm.coolDown=0;
+  const mouse={x:100,y:100,leftPressed:true,leftDown:true};
+  tm.update(1/60, mouse, null);
+  assert.ok(cloneLook, 'clone was not built');
+  assert.ok(cloneLook.cf.pos.z < src.cf.pos.z-0.9,
+    'clone must spawn out of the clicked -Z face, not into the part above');
+  assert.deepStrictEqual(cloneLook.velocity,{x:0,y:0,z:0},
+    'clone must not inherit the source Velocity');
+  assert.ok(cloneLook.anchored, 'clone must be held out of physics while dragged');
+  assert.ok(tm.grabbed&&tm.grabbed.look===cloneLook,
+    'clone tool must start a drag on the clone');
+  mouse.x=140; mouse.leftPressed=false;
+  tm.update(1/60, mouse, null);
+  assert.ok(tm.grabbed, 'clone drag ended before release');
+  tm.update(1/60, {x:140,y:100,leftDown:false,leftPressed:false}, null);
+  assert.ok(!tm.grabbed, 'clone drag did not release');
+  assert.strictEqual(cloneLook.anchored,false,
+    'unanchored source must restore physics on release');
 }
 
 console.log('ALL MOVETOOL TESTS PASSED');

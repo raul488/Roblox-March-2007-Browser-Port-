@@ -32,6 +32,14 @@ part.parent=model; model.children.push(part);
 hum.children.push(part);                         /* alias, parent stays model */
 assert.deepStrictEqual(E.walkAll(model).map(x=>x.props.Name), ['M','H','P']);
 
+/* cloneInst is the JS entry to the classic :clone() subtree copy. */
+const cloneSrc=E.mkInst('Part','CloneMe');
+cloneSrc.props.size={x:1,y:1,z:1};
+const cloneCopy=E.cloneInst(cloneSrc);
+assert.ok(cloneCopy&&cloneCopy!==cloneSrc,'cloneInst must return a distinct copy');
+assert.strictEqual(cloneCopy.props.Name,'CloneMe');
+assert.strictEqual(cloneCopy.parent,null);
+
 /* recursive FindFirstChild reaches a descendant */
 E.forPlace({instances:[]}, null, null, null);
 const findEnv=L.makeEnv({obj:E.wrap(model)});

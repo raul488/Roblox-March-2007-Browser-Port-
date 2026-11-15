@@ -3618,6 +3618,7 @@ window.RBLXenv={
                      x:mouseState.x, y:mouseState.y, leftDown:mouseState.leftDown}),
   syncCharacterMover, isUnderCharacter, attachToWorld, detachFromWorld, reparent,
   V3, CF, Color3, BrickColor,
+  cloneInst:(inst)=>unwrap(doClone(inst)),
   toolGripCF, setToolGrip, toolGripVectors,
   chooseSpawnPad, teamInstances, setPlayerTeam,
 };

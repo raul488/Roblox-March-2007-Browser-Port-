@@ -484,6 +484,7 @@ class ToolManager {
       this.character.toolEquipped=false;
       this.character.setToolVisual && this.character.setToolVisual(null);
     }
+    if (this.grabbed) this._endGrab();
     this.activeInst=null; this.activeKind=null;
     this.binType=null; this.toolName=''; this.hasScript=false;
     this.toolHandle=null; this.toolLook=null; this.toolVisual=null;
@@ -599,6 +600,242 @@ class ToolManager {
       if (!best||d<best.dot) best={ normal:n, half:h[axis], dot:d };
     }
     return best;
+  }
+
+  /* Begin a single-part or assembly drag from a picked look.  Shared by the
+   * GameTool, Grab and Clone tools so all three move the same way. */
+  _startGrab(pick, ray, mouse, restore){
+    if (!pick||!pick.look||pick.look.destroyed) return false;
+    if (pick.look.part.props.Locked===true){
+      /* FUN_005ccce0: a Locked part is not draggable */
+      this.selected=null;
+      if (window.Sounds) window.Sounds.sound('clickfast.wav',{volume:0.2});
+      return false;
+    }
+    this.selected=pick.look;
+    const P=pick.look.cf.pos;
+    const face=this.world.partFaceAt(pick.look, pick.hit||P);
+    const planeN=face? face.normal : {x:0,y:1,z:0};
+    const dyn=window.RBLXdyn;
+    const asm=(dyn&&dyn._ready&&dyn.asmMap.get(pick.look))||null;
+    let single=true, members=[pick.look];
+    if (asm&&!asm.destroyed&&!asm.static&&asm.members.length<=64){
+      members=asm.members.filter(m=>!m.destroyed);
+      single=members.length===1;
+    }
+    /* click offset inside the drag plane, so the part does not jump its
+     * centre under the cursor on the first move */
+    const den=vdot(ray.dir,planeN);
+    let off={x:0,y:0,z:0};
+    if (Math.abs(den)>1e-6){
+      const t=vdot({x:P.x-ray.origin.x,y:P.y-ray.origin.y,z:P.z-ray.origin.z},planeN)/den;
+      if (t>0){
+        off={
+          x:P.x-(ray.origin.x+ray.dir.x*t),
+          y:P.y-(ray.origin.y+ray.dir.y*t),
+          z:P.z-(ray.origin.z+ray.dir.z*t),
+        };
+      }
+    }
+    this.grabbed={
+      look:pick.look, gameTool:this.binType===1, single, members,
+      starts:members.map(m=>({x:m.cf.pos.x, y:m.cf.pos.y, z:m.cf.pos.z})),
+      planeN, planeP:{x:P.x,y:P.y,z:P.z}, offset:off,
+      exclude:new Set(members),
+      startMouse:{x:mouse.x, y:mouse.y},
+      restore:restore||null,
+    };
+    return true;
+  }
+  /* Clone a picked part just outside its clicked face and return the look
+   * plus the anchor state to restore when the drag ends.  Copying the
+   * source's Velocity/RotVelocity launched the clone, and spawning it in
+   * place put it inside the part above; neither happens now. */
+  _clonePick(pick){
+    if (!pick||!pick.look||pick.look.destroyed) return null;
+    const w=this.world, src=pick.look, p=src.part;
+    const face=w.partFaceAt(src, pick.hit||src.cf.pos);
+    const n=face? face.normal : {x:0,y:1,z:0};
+    const R=src.cf.rot, s=src.size;
+    const support=Math.abs(n.x*R[0]+n.y*R[3]+n.z*R[6])*s.x/2
+                 +Math.abs(n.x*R[1]+n.y*R[4]+n.z*R[7])*s.y/2
+                 +Math.abs(n.x*R[2]+n.y*R[5]+n.z*R[8])*s.z/2;
+    const gap=support*2+0.05;
+    const cf={
+      pos:{x:src.cf.pos.x+n.x*gap, y:src.cf.pos.y+n.y*gap, z:src.cf.pos.z+n.z*gap},
+      rot:src.cf.rot.slice(),
+    };
+    let inst=null, look=null;
+    const E=window.RBLXenv;
+    if (E&&E.cloneInst&&E.reparent&&E.state&&E.state.netEnabled){
+      inst=E.cloneInst(p);
+      if (inst){
+        inst.props.CFrame=cf;
+        inst.props.Velocity={x:0,y:0,z:0};
+        inst.props.RotVelocity={x:0,y:0,z:0};
+        inst.props.Anchored=true;
+        inst.props.Locked=false;
+        E.reparent(inst, E.state.workspaceInst);
+        look=E.viewLook(inst);
+      }
+    } else {
+      const props=Object.assign({}, p.props, {
+        CFrame:cf,
+        Velocity:{x:0,y:0,z:0},
+        RotVelocity:{x:0,y:0,z:0},
+        Anchored:true,      /* held out of physics while being placed */
+        Locked:false,
+      });
+      const clone={cls:'Part', ref:null, parent:null, children:p.children.slice(), props};
+      look=w.buildPart(clone);
+      inst=clone;
+    }
+    if (!look) return null;
+    return { look, restore:{ look, part:inst, anchored:p.props.Anchored!==false, normal:n } };
+  }
+  /* Shared drag update: surface snap for one part, assembly drag otherwise. */
+  _dragGrab(ray, mouse){
+    const g=this.grabbed, w=this.world;
+    if (!g||!w) return;
+    let np=null;
+    /* A stationary cursor must not immediately surface-snap the part down
+     * through its own old position; wait for a real drag. */
+    const moved=Math.hypot(mouse.x-g.startMouse.x, mouse.y-g.startMouse.y)>3;
+    if (g.single&&moved){
+      /* surface snap: place the anti-parallel face on the hit face */
+      const targ=w.rayHit(ray.origin, ray.dir, 1000, g.exclude);
+      if (targ&&targ.look&&targ.look!==g.look){
+        const tf=w.partFaceAt(targ.look, {x:targ.hit.x, y:targ.hit.y, z:targ.hit.z});
+        const mate=tf&&this._matingFace(g.look, tf.normal);
+        if (tf&&mate){
+          np={
+            x:targ.hit.x-mate.normal.x*mate.half,
+            y:targ.hit.y-mate.normal.y*mate.half,
+            z:targ.hit.z-mate.normal.z*mate.half,
+          };
+          /* make the mating face's plane coincide with the target's */
+          const fc={
+            x:np.x+mate.normal.x*mate.half,
+            y:np.y+mate.normal.y*mate.half,
+            z:np.z+mate.normal.z*mate.half,
+          };
+          const corr=vdot(tf.normal,{x:tf.center.x-fc.x, y:tf.center.y-fc.y, z:tf.center.z-fc.z});
+          np.x+=tf.normal.x*corr; np.y+=tf.normal.y*corr; np.z+=tf.normal.z*corr;
+          /* 1-stud lattice in the TARGET FACE's own tangent basis, so
+           * rotated walls snap to their stud lines too */
+          const A=targ.look.cf.rot;
+          const i1=(tf.axis+1)%3, i2=(tf.axis+2)%3;
+          const u={x:A[i1], y:A[3+i1], z:A[6+i1]};
+          const v={x:A[i2], y:A[3+i2], z:A[6+i2]};
+          const dx=np.x-tf.center.x, dy=np.y-tf.center.y, dz=np.z-tf.center.z;
+          const du=dx*u.x+dy*u.y+dz*u.z;
+          const dv=dx*v.x+dy*v.y+dz*v.z;
+          /* stud phase: an odd face has a stud at its centre, an even one
+           * has studs at half-stud offsets; an odd footprint has its Inlet
+           * holes on its centre, an even one between.  The difference puts
+           * the part's holes on the target's studs. */
+          const ax=['x','y','z'];
+          const pu=studPhase(targ.look.size[ax[i1]])-studPhase(footprintAlong(g.look,u));
+          const pv=studPhase(targ.look.size[ax[i2]])-studPhase(footprintAlong(g.look,v));
+          const su=Math.round(du-pu)+pu-du, sv=Math.round(dv-pv)+pv-dv;
+          np.x+=u.x*su+v.x*sv; np.y+=u.y*su+v.y*sv; np.z+=u.z*su+v.z*sv;
+          /* a hair outside the target prevents z-fighting; AutoJoin still
+           * sees a flush (<=0.05) Studs/Inlet pair */
+          np.x+=tf.normal.x*0.0005; np.y+=tf.normal.y*0.0005; np.z+=tf.normal.z*0.0005;
+        }
+      }
+      if (!np){
+        /* free drag in the plane of the clicked face, 1-stud grid */
+        const den=vdot(ray.dir,g.planeN);
+        if (Math.abs(den)>1e-6){
+          const t=vdot({x:g.planeP.x-ray.origin.x, y:g.planeP.y-ray.origin.y,
+                        z:g.planeP.z-ray.origin.z},g.planeN)/den;
+          if (t>0){
+            np={x:ray.origin.x+ray.dir.x*t+g.offset.x,
+                y:ray.origin.y+ray.dir.y*t+g.offset.y,
+                z:ray.origin.z+ray.dir.z*t+g.offset.z};
+            const pn=[Math.abs(g.planeN.x),Math.abs(g.planeN.y),Math.abs(g.planeN.z)];
+            const pAxis=(pn[0]>=pn[1]&&pn[0]>=pn[2])?0:(pn[1]>=pn[2]?1:2);
+            if (pAxis!==0) np.x=Math.round(np.x);
+            if (pAxis!==1) np.y=Math.round(np.y);
+            if (pAxis!==2) np.z=Math.round(np.z);
+          }
+        }
+      }
+      if (np){
+        placeDragLook(g.look, np, g.look.cf.rot);
+        if (window.RBLXdyn&&window.RBLXdyn._refresh) window.RBLXdyn._refresh(g.look);
+        g.starts=[{x:np.x,y:np.y,z:np.z}];
+        g.planeP={x:np.x,y:np.y,z:np.z};
+        g.offset={x:0,y:0,z:0};
+      }
+    } else {
+      /* loose assembly drag: keep every member's original offset */
+      const pickIdx=g.members.indexOf(g.look);
+      const anchor=g.starts[pickIdx>=0? pickIdx : 0];
+      const denom=ray.dir.y;
+      if (Math.abs(denom)>1e-6){
+        const t=(anchor.y-ray.origin.y)/denom;
+        if (t>0){
+          const flat=ray.origin.clone().addScaledVector(ray.dir,t);
+          const dx=flat.x-g.offset.x-anchor.x, dz=flat.z-g.offset.z-anchor.z;
+          const dyn=window.RBLXdyn;
+          const asm=dyn&&dyn.asmMap&&dyn.asmMap.get(g.look);
+          const body=asm&&!asm.static&&asm.members.length<=64;
+          if (body&&dyn.moveAssembly){
+            dyn.moveAssembly(g.look, { pos:{x:anchor.x+dx, y:anchor.y, z:anchor.z+dz},
+                                       rot:g.look.cf.rot });
+          } else {
+            for (let i=0;i<g.members.length;i++){
+              const m=g.members[i];
+              if (m.destroyed) continue;
+              placeDragLook(m, { x:g.starts[i].x+dx, y:g.starts[i].y, z:g.starts[i].z+dz }, m.cf.rot);
+              if (dyn&&dyn._refresh) dyn._refresh(m);   // grid cells follow
+            }
+          }
+        }
+      }
+    }
+  }
+  /* True when the look's box penetrates a solid part by more than the
+   * AutoJoin slop (flush contact is not an overlap). */
+  _overlaps(look){
+    const w=this.world;
+    if (!w||!look.cf||!look.size) return false;
+    const R=look.cf.rot, P=look.cf.pos, s=look.size;
+    const ex=Math.abs(R[0])*s.x/2+Math.abs(R[1])*s.y/2+Math.abs(R[2])*s.z/2;
+    const ey=Math.abs(R[3])*s.x/2+Math.abs(R[4])*s.y/2+Math.abs(R[5])*s.z/2;
+    const ez=Math.abs(R[6])*s.x/2+Math.abs(R[7])*s.y/2+Math.abs(R[8])*s.z/2;
+    for (const o of (w.colliders||[])){
+      if (o===look||o.destroyed||!o.aabb||o.canCollide===false) continue;
+      const a=o.aabb;
+      if (P.x-ex<a.max.x-0.05 && P.x+ex>a.min.x+0.05 &&
+          P.y-ey<a.max.y-0.05 && P.y+ey>a.min.y+0.05 &&
+          P.z-ez<a.max.z-0.05 && P.z+ez>a.min.z+0.05) return true;
+    }
+    return false;
+  }
+  _endGrab(){
+    const g=this.grabbed;
+    if (!g) return;
+    if (g.restore&&g.restore.look){
+      const look=g.restore.look, n=g.restore.normal||{x:0,y:1,z:0};
+      /* An unanchored clone released inside another part would be ejected
+       * by the contact solver: walk it out along the clicked face first. */
+      if (!g.restore.anchored){
+        for (let i=0;i<16&&this._overlaps(look);i++){
+          const p=look.cf.pos;
+          placeDragLook(look, {x:p.x+n.x*0.5, y:p.y+n.y*0.5, z:p.z+n.z*0.5}, look.cf.rot);
+        }
+      }
+      const anchored=!!g.restore.anchored;
+      look.anchored=anchored;
+      if (g.restore.part&&g.restore.part.props) g.restore.part.props.Anchored=anchored;
+    }
+    /* release: the joint graph re-floods so the dragged part bonds to
+     * whatever faces it now touches (flush Studs/Inlet pair) */
+    if (window.RBLXdyn&&window.RBLXdyn.markDirty) window.RBLXdyn.markDirty();
+    this.grabbed=null;
   }
 
   update(dt, mouse, character){
@@ -718,30 +955,32 @@ class ToolManager {
         }
         break;
       /* 3 Clone  classic clonewand: duplicate part under cursor */
-      case 3:
+      case 3: {
         if (mouse.leftPressed){
           const pick=w.pickPartRaw(ray);
-          if (pick){
-            const p=pick.look.part;
-            const clone={
-              cls:'Part', ref:null, parent:null, children:p.children.slice(), props:Object.assign({}, p.props)
-            };
-            const s=p.props.size;
-            clone.props.CFrame={ pos:{ x:p.props.CFrame.pos.x, y:p.props.CFrame.pos.y+ (s? s.y/2+1:1), z:p.props.CFrame.pos.z },
-                                 rot:p.props.CFrame.rot.slice() };
-            const E=window.RBLXenv;
-            if (E && E.mkInst && E.reparent && E.state && E.state.netEnabled){
-              const inst=E.mkInst('Part','Clone');
-              inst.props=Object.assign({}, p.props, { CFrame:clone.props.CFrame });
-              E.reparent(inst, E.state.workspaceInst);
-            } else {
-              w.buildPart(clone);
+          if (pick&&pick.look.part.props.Locked!==true){
+            const made=this._clonePick(pick);
+            if (made){
+              const n=(w.partFaceAt(pick.look, pick.hit||pick.look.cf.pos)||
+                       {normal:{x:0,y:1,z:0}}).normal;
+              const c=made.look.cf.pos, s=made.look.size, R=made.look.cf.rot;
+              const supp=Math.abs(n.x*R[0]+n.y*R[3]+n.z*R[6])*s.x/2
+                        +Math.abs(n.x*R[1]+n.y*R[4]+n.z*R[7])*s.y/2
+                        +Math.abs(n.x*R[2]+n.y*R[5]+n.z*R[8])*s.z/2;
+              this._startGrab({ look:made.look,
+                                hit:{x:c.x-n.x*supp, y:c.y-n.y*supp, z:c.z-n.z*supp} },
+                              ray, mouse, made.restore);
+              window.Sounds.sound('snap.wav',{volume:0.5});
             }
-            window.Sounds.sound('snap.wav', {volume:0.5});
+          } else if (pick){
+            window.Sounds.sound('clickfast.wav',{volume:0.2});
           }
-          this.coolDown=0.4;
+        } else if (mouse.leftDown && this.grabbed){
+          this._dragGrab(ray, mouse);
         }
+        if (!mouse.leftDown && this.grabbed) this._endGrab();
         break;
+      }
       /* 4 Hammer  classic destruct tool */
       case 4:
         if (mouse.leftPressed){
@@ -778,159 +1017,14 @@ class ToolManager {
            builds so welds/hinges survive, falling back to a single part for
            static/huge clusters. */
       case 1: case 2: {
-        const gameTool=(this.binType===1);
         if (mouse.leftPressed){
           const pick=w.pickPartRaw(ray);
-          if (pick){
-            if (pick.look.part.props.Locked===true){
-              /* FUN_005ccce0: a Locked part is not draggable */
-              this.selected=null;
-              window.Sounds.sound('clickfast.wav', {volume:0.2});
-            } else {
-              this.selected=pick.look;
-              const P=pick.look.cf.pos;
-              const face=w.partFaceAt(pick.look, {x:pick.hit.x, y:pick.hit.y, z:pick.hit.z});
-              const planeN=face? face.normal : {x:0,y:1,z:0};
-              const dyn=window.RBLXdyn;
-              const asm=(dyn&&dyn._ready&&dyn.asmMap.get(pick.look))||null;
-              let single=true, members=[pick.look];
-              if (asm&&!asm.destroyed&&!asm.static&&asm.members.length<=64){
-                members=asm.members.filter(m=>!m.destroyed);
-                single=members.length===1;
-              }
-              /* click offset inside the drag plane, so the part does not
-               * jump its centre under the cursor on the first move */
-              const den=vdot(ray.dir,planeN);
-              let off={x:0,y:0,z:0};
-              if (Math.abs(den)>1e-6){
-                const t=vdot({x:P.x-ray.origin.x,y:P.y-ray.origin.y,z:P.z-ray.origin.z},planeN)/den;
-                if (t>0){
-                  off={
-                    x:P.x-(ray.origin.x+ray.dir.x*t),
-                    y:P.y-(ray.origin.y+ray.dir.y*t),
-                    z:P.z-(ray.origin.z+ray.dir.z*t),
-                  };
-                }
-              }
-              this.grabbed={
-                look:pick.look, gameTool, single, members,
-                starts:members.map(m=>({x:m.cf.pos.x, y:m.cf.pos.y, z:m.cf.pos.z})),
-                planeN, planeP:{x:P.x,y:P.y,z:P.z}, offset:off,
-                exclude:new Set(members),
-                startMouse:{x:mouse.x, y:mouse.y},
-              };
-            }
-          } else this.selected=null;
+          if (pick) this._startGrab(pick, ray, mouse);
+          else this.selected=null;
         } else if (mouse.leftDown && this.grabbed){
-          const g=this.grabbed;
-          let np=null;
-          /* A stationary cursor must not immediately surface-snap the part
-           * down through its own old position; wait for a real drag. */
-          const moved=Math.hypot(mouse.x-g.startMouse.x, mouse.y-g.startMouse.y)>3;
-          if (g.single&&moved){
-            /* surface snap: place the anti-parallel face on the hit face */
-            const targ=w.rayHit(ray.origin, ray.dir, 1000, g.exclude);
-            if (targ&&targ.look&&targ.look!==g.look){
-              const tf=w.partFaceAt(targ.look, {x:targ.hit.x, y:targ.hit.y, z:targ.hit.z});
-              const mate=tf&&this._matingFace(g.look, tf.normal);
-              if (tf&&mate){
-                np={
-                  x:targ.hit.x-mate.normal.x*mate.half,
-                  y:targ.hit.y-mate.normal.y*mate.half,
-                  z:targ.hit.z-mate.normal.z*mate.half,
-                };
-                /* make the mating face's plane coincide with the target's */
-                const fc={
-                  x:np.x+mate.normal.x*mate.half,
-                  y:np.y+mate.normal.y*mate.half,
-                  z:np.z+mate.normal.z*mate.half,
-                };
-                const corr=vdot(tf.normal,{x:tf.center.x-fc.x, y:tf.center.y-fc.y, z:tf.center.z-fc.z});
-                np.x+=tf.normal.x*corr; np.y+=tf.normal.y*corr; np.z+=tf.normal.z*corr;
-                /* 1-stud lattice in the TARGET FACE's own tangent basis, so
-                 * rotated walls snap to their stud lines too */
-                const A=targ.look.cf.rot;
-                const i1=(tf.axis+1)%3, i2=(tf.axis+2)%3;
-                const u={x:A[i1], y:A[3+i1], z:A[6+i1]};
-                const v={x:A[i2], y:A[3+i2], z:A[6+i2]};
-                const dx=np.x-tf.center.x, dy=np.y-tf.center.y, dz=np.z-tf.center.z;
-                const du=dx*u.x+dy*u.y+dz*u.z;
-                const dv=dx*v.x+dy*v.y+dz*v.z;
-                /* stud phase: an odd face has a stud at its centre, an even
-                 * one has studs at half-stud offsets; an odd footprint has
-                 * its Inlet holes on its centre, an even one between.  The
-                 * difference puts the part's holes on the target's studs. */
-                const ax=['x','y','z'];
-                const pu=studPhase(targ.look.size[ax[i1]])-studPhase(footprintAlong(g.look,u));
-                const pv=studPhase(targ.look.size[ax[i2]])-studPhase(footprintAlong(g.look,v));
-                const su=Math.round(du-pu)+pu-du, sv=Math.round(dv-pv)+pv-dv;
-                np.x+=u.x*su+v.x*sv; np.y+=u.y*su+v.y*sv; np.z+=u.z*su+v.z*sv;
-                /* a hair outside the target prevents z-fighting; AutoJoin
-                 * still sees a flush (<=0.05) Studs/Inlet pair */
-                np.x+=tf.normal.x*0.0005; np.y+=tf.normal.y*0.0005; np.z+=tf.normal.z*0.0005;
-              }
-            }
-            if (!np){
-              /* free drag in the plane of the clicked face, 1-stud grid */
-              const den=vdot(ray.dir,g.planeN);
-              if (Math.abs(den)>1e-6){
-                const t=vdot({x:g.planeP.x-ray.origin.x, y:g.planeP.y-ray.origin.y,
-                              z:g.planeP.z-ray.origin.z},g.planeN)/den;
-                if (t>0){
-                  np={x:ray.origin.x+ray.dir.x*t+g.offset.x,
-                      y:ray.origin.y+ray.dir.y*t+g.offset.y,
-                      z:ray.origin.z+ray.dir.z*t+g.offset.z};
-                  const pn=[Math.abs(g.planeN.x),Math.abs(g.planeN.y),Math.abs(g.planeN.z)];
-                  const pAxis=(pn[0]>=pn[1]&&pn[0]>=pn[2])?0:(pn[1]>=pn[2]?1:2);
-                  if (pAxis!==0) np.x=Math.round(np.x);
-                  if (pAxis!==1) np.y=Math.round(np.y);
-                  if (pAxis!==2) np.z=Math.round(np.z);
-                }
-              }
-            }
-            if (np){
-              placeDragLook(g.look, np, g.look.cf.rot);
-              if (window.RBLXdyn&&window.RBLXdyn._refresh) window.RBLXdyn._refresh(g.look);
-              g.starts=[{x:np.x,y:np.y,z:np.z}];
-              g.planeP={x:np.x,y:np.y,z:np.z};
-              g.offset={x:0,y:0,z:0};
-            }
-          } else {
-            /* loose assembly drag: keep every member's original offset */
-            const pickIdx=g.members.indexOf(g.look);
-            const anchor=g.starts[pickIdx>=0? pickIdx : 0];
-            const denom=ray.dir.y;
-            if (Math.abs(denom)>1e-6){
-              const t=(anchor.y-ray.origin.y)/denom;
-              if (t>0){
-                const flat=ray.origin.clone().addScaledVector(ray.dir,t);
-                const dx=flat.x-g.offset.x-anchor.x, dz=flat.z-g.offset.z-anchor.z;
-                const dyn=window.RBLXdyn;
-                const asm=dyn&&dyn.asmMap&&dyn.asmMap.get(g.look);
-                const body=asm&&!asm.static&&asm.members.length<=64;
-                if (body&&dyn.moveAssembly){
-                  dyn.moveAssembly(g.look, { pos:{x:anchor.x+dx, y:anchor.y, z:anchor.z+dz},
-                                             rot:g.look.cf.rot });
-                } else {
-                  for (let i=0;i<g.members.length;i++){
-                    const m=g.members[i];
-                    if (m.destroyed) continue;
-                    placeDragLook(m, { x:g.starts[i].x+dx, y:g.starts[i].y, z:g.starts[i].z+dz }, m.cf.rot);
-                    if (dyn&&dyn._refresh) dyn._refresh(m);   // grid cells follow
-                  }
-                }
-              }
-            }
-          }
+          this._dragGrab(ray, mouse);
         }
-        if (!mouse.leftDown){
-          if (this.grabbed){
-            /* release: the joint graph re-floods so the dragged part bonds
-               to whatever faces it now touches (flush Studs/Inlet pair) */
-            if (window.RBLXdyn&&window.RBLXdyn.markDirty) window.RBLXdyn.markDirty();
-            this.grabbed=null;
-          }
-        }
+        if (!mouse.leftDown && this.grabbed) this._endGrab();
         break;
       }
     }
