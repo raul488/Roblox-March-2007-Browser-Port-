@@ -548,7 +548,7 @@ function bindInput(canvas){
     keys.delete(k);
     if (tools) tools.keyUp(k);
   });
-  window.addEventListener('blur', ()=>keys.clear());
+  window.addEventListener('blur', ()=>{ keys.clear(); if (tools) tools.releaseKeys(); });
   input.keys=keys;
 
   ui.$chatInput.addEventListener('keydown', e=>{

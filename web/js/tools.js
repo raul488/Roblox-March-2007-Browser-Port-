@@ -171,6 +171,42 @@ function dominantAxis(v){
   if (ay>=az) return {x:0, y:v.y<0?-1:1, z:0};
   return {x:0, y:0, z:v.z<0?-1:1};
 }
+/* Stud-grid phase of a face extent: odd widths put a stud on the face
+ * centre, even widths put studs at half-stud offsets.  A brick's Inlet
+ * holes follow the same rule for its own footprint, so snapping the two
+ * phases together puts odd footprints on studs and even ones between. */
+function studPhase(extent){
+  const n=Math.round(extent);
+  return (Math.abs(extent-n)<1e-6 && (n%2)===0)? 0.5 : 0;
+}
+/* projected footprint of a part along a world direction (OBB extent) */
+function footprintAlong(look, dir){
+  if (!look||!look.cf||!look.size) return 1;
+  const R=look.cf.rot, s=look.size;
+  return Math.abs(dir.x*R[0]+dir.y*R[3]+dir.z*R[6])*s.x
+       + Math.abs(dir.x*R[1]+dir.y*R[4]+dir.z*R[7])*s.y
+       + Math.abs(dir.x*R[2]+dir.y*R[5]+dir.z*R[8])*s.z;
+}
+/* Move a dragged look: a free body goes through dynamics so the solver
+ * keeps the drag pose; a static welded part moves on its own. */
+function placeDragLook(look, pos, rot){
+  if (!look||look.destroyed) return false;
+  const D=window.RBLXdyn;
+  const asm=D&&D.asmMap&&D.asmMap.get(look);
+  if (asm&&!asm.static&&asm.members.length<=64&&D.moveAssembly)
+    return D.moveAssembly(look, {pos, rot});
+  const E=window.RBLXenv;
+  if (E&&E.placePart){ E.placePart(look.part,{pos,rot}); return true; }
+  if (look.obj){
+    look.cf={pos:{x:pos.x,y:pos.y,z:pos.z}, rot:rot.slice()};
+    look.obj.position.set(pos.x,pos.y,pos.z);
+    look.obj.quaternion.setFromRotationMatrix(new THREE.Matrix4().set(
+      rot[0],rot[1],rot[2],pos.x, rot[3],rot[4],rot[5],pos.y,
+      rot[6],rot[7],rot[8],pos.z, 0,0,0,1));
+    return true;
+  }
+  return false;
+}
 
 class ToolManager {
   constructor(scene, world, camera){
@@ -182,6 +218,7 @@ class ToolManager {
     this.lastExplosion=null;      // consumed by world.explodeAt in main
     this.coolDown=0;
     this.grabbed=null;
+    this.selected=null;           // last part picked; R/T keep working after release
     this.rightGrip=null;          // fake Weld under Right Arm
     this.toolHandle=null;         // Tool.Handle Part instance
     this.toolLook=null;           // live world look for Handle
@@ -411,6 +448,7 @@ class ToolManager {
     if (!inst) return;
     if (this.activeInst===inst) return;
     this.unequip();
+    this._heldKeys.clear();
     this.activeInst=inst;
     this.activeKind=inst.cls;
     this.toolName=inst.props.Name||inst.cls;
@@ -449,7 +487,8 @@ class ToolManager {
     this.activeInst=null; this.activeKind=null;
     this.binType=null; this.toolName=''; this.hasScript=false;
     this.toolHandle=null; this.toolLook=null; this.toolVisual=null;
-    this.pendingEquip=null;
+    this.pendingEquip=null; this.selected=null;
+    this._heldKeys.clear();
     this.coolDown=0.15;
   }
 
@@ -469,7 +508,7 @@ class ToolManager {
     if (E) E.keyDown(key);
     const fresh=!this._heldKeys.has(key);
     this._heldKeys.add(key);
-    if (fresh && this.grabbed && this.binType===1) this._rotateGrab(key);
+    if (fresh && (this.grabbed||this.selected)) this._rotateGrab(key);
     if (this.activeInst){
       const m=E? E.getMouse() : null;
       this._activeEvent('KeyDown', [m, key], 'KeyDown');
@@ -484,53 +523,67 @@ class ToolManager {
       this._activeEvent('KeyUp', [m, key], 'KeyUp');
     }
   }
+  /* a window blur never delivers the keyup for keys held at that moment */
+  releaseKeys(){ this._heldKeys.clear(); }
 
   /* MoveTool/GameTool rotate keys from PartDragTool (FUN_00604a60):
    *   R -> 90 degrees around world Y
    *   T -> 90 degrees around the world axis nearest the part's RightVector
-   * Rotation is around the grabbed part's centre; an assembly rotates as a
-   * unit when the drag owns more than one member. */
+   * Rotation is around the selected part's centre; a free assembly rotates
+   * as a unit, a static weld cluster only moves the picked part. */
   _rotateGrab(key){
     const g=this.grabbed;
-    if (!g||!g.look||g.look.destroyed) return;
+    const look=(g&&g.look)||this.selected;
+    if (!look||look.destroyed||!look.cf) return;
     let axis=null;
     if (key==='r') axis={x:0,y:1,z:0};
     else if (key==='t'){
-      const R=g.look.cf.rot;
+      const R=look.cf.rot;
       axis=dominantAxis({x:R[0], y:R[3], z:R[6]});
     }
     if (!axis) return;
     const Q=rotAxisAngle(axis, Math.PI/2);
-    const pivot=g.look.cf.pos;
+    const pivot=look.cf.pos;
     const E=window.RBLXenv;
-    for (const m of g.members){
-      if (!m||m.destroyed||!m.cf) continue;
-      const R=m.cf.rot, P=m.cf.pos;
-      const rel={x:P.x-pivot.x, y:P.y-pivot.y, z:P.z-pivot.z};
-      const np={
-        x:pivot.x+Q[0]*rel.x+Q[1]*rel.y+Q[2]*rel.z,
-        y:pivot.y+Q[3]*rel.x+Q[4]*rel.y+Q[5]*rel.z,
-        z:pivot.z+Q[6]*rel.x+Q[7]*rel.y+Q[8]*rel.z,
-      };
-      const rot=rotMul(Q,R);
-      if (E&&E.placePart) E.placePart(m.part,{pos:np,rot});
-      else if (m.obj){
-        m.cf={pos:np,rot};
-        m.obj.position.set(np.x,np.y,np.z);
-        m.obj.quaternion.setFromRotationMatrix(new THREE.Matrix4().set(
-          rot[0],rot[1],rot[2],np.x, rot[3],rot[4],rot[5],np.y,
-          rot[6],rot[7],rot[8],np.z, 0,0,0,1));
+    const D=window.RBLXdyn;
+    const asm=D&&D.asmMap&&D.asmMap.get(look);
+    const members=(g&&g.members)||[look];
+    /* A free body is one rigid assembly: move it through dynamics so the
+     * solver keeps the new pose instead of committing the old one. */
+    if (asm&&!asm.static&&asm.members.length<=64&&D.moveAssembly){
+      D.moveAssembly(look, {pos:pivot, rot:rotMul(Q, look.cf.rot)});
+    } else {
+      for (const m of members){
+        if (!m||m.destroyed||!m.cf) continue;
+        const R=m.cf.rot, P=m.cf.pos;
+        const rel={x:P.x-pivot.x, y:P.y-pivot.y, z:P.z-pivot.z};
+        const np={
+          x:pivot.x+Q[0]*rel.x+Q[1]*rel.y+Q[2]*rel.z,
+          y:pivot.y+Q[3]*rel.x+Q[4]*rel.y+Q[5]*rel.z,
+          z:pivot.z+Q[6]*rel.x+Q[7]*rel.y+Q[8]*rel.z,
+        };
+        const rot=rotMul(Q,R);
+        if (E&&E.placePart) E.placePart(m.part,{pos:np,rot});
+        else if (m.obj){
+          m.cf={pos:np,rot};
+          m.obj.position.set(np.x,np.y,np.z);
+          m.obj.quaternion.setFromRotationMatrix(new THREE.Matrix4().set(
+            rot[0],rot[1],rot[2],np.x, rot[3],rot[4],rot[5],np.y,
+            rot[6],rot[7],rot[8],np.z, 0,0,0,1));
+        }
+        if (window.RBLXdyn&&window.RBLXdyn._refresh) window.RBLXdyn._refresh(m);
       }
-      if (window.RBLXdyn&&window.RBLXdyn._refresh) window.RBLXdyn._refresh(m);
     }
-    /* drag offsets are measured from the current poses after a rotation */
-    g.starts=g.members.map(m=>({x:m.cf.pos.x, y:m.cf.pos.y, z:m.cf.pos.z}));
-    g.offset={x:0,y:0,z:0};
-    const n=g.planeN;
-    g.planeN={ x:Q[0]*n.x+Q[1]*n.y+Q[2]*n.z,
-               y:Q[3]*n.x+Q[4]*n.y+Q[5]*n.z,
-               z:Q[6]*n.x+Q[7]*n.y+Q[8]*n.z };
-    g.planeP={x:g.look.cf.pos.x, y:g.look.cf.pos.y, z:g.look.cf.pos.z};
+    if (g){
+      /* drag offsets are measured from the current poses after a rotation */
+      g.starts=g.members.map(m=>({x:m.cf.pos.x, y:m.cf.pos.y, z:m.cf.pos.z}));
+      g.offset={x:0,y:0,z:0};
+      const n=g.planeN;
+      g.planeN={ x:Q[0]*n.x+Q[1]*n.y+Q[2]*n.z,
+                 y:Q[3]*n.x+Q[4]*n.y+Q[5]*n.z,
+                 z:Q[6]*n.x+Q[7]*n.y+Q[8]*n.z };
+      g.planeP={x:g.look.cf.pos.x, y:g.look.cf.pos.y, z:g.look.cf.pos.z};
+    }
     if (window.Sounds) window.Sounds.sound('snap.wav',{volume:0.25});
   }
   /* Face of the dragged part that should meet the target surface: the one
@@ -731,8 +784,10 @@ class ToolManager {
           if (pick){
             if (pick.look.part.props.Locked===true){
               /* FUN_005ccce0: a Locked part is not draggable */
+              this.selected=null;
               window.Sounds.sound('clickfast.wav', {volume:0.2});
             } else {
+              this.selected=pick.look;
               const P=pick.look.cf.pos;
               const face=w.partFaceAt(pick.look, {x:pick.hit.x, y:pick.hit.y, z:pick.hit.z});
               const planeN=face? face.normal : {x:0,y:1,z:0};
@@ -765,14 +820,14 @@ class ToolManager {
                 startMouse:{x:mouse.x, y:mouse.y},
               };
             }
-          }
+          } else this.selected=null;
         } else if (mouse.leftDown && this.grabbed){
           const g=this.grabbed;
           let np=null;
           /* A stationary cursor must not immediately surface-snap the part
            * down through its own old position; wait for a real drag. */
           const moved=Math.hypot(mouse.x-g.startMouse.x, mouse.y-g.startMouse.y)>3;
-          if (g.gameTool&&g.single&&moved){
+          if (g.single&&moved){
             /* surface snap: place the anti-parallel face on the hit face */
             const targ=w.rayHit(ray.origin, ray.dir, 1000, g.exclude);
             if (targ&&targ.look&&targ.look!==g.look){
@@ -801,7 +856,14 @@ class ToolManager {
                 const dx=np.x-tf.center.x, dy=np.y-tf.center.y, dz=np.z-tf.center.z;
                 const du=dx*u.x+dy*u.y+dz*u.z;
                 const dv=dx*v.x+dy*v.y+dz*v.z;
-                const su=Math.round(du)-du, sv=Math.round(dv)-dv;
+                /* stud phase: an odd face has a stud at its centre, an even
+                 * one has studs at half-stud offsets; an odd footprint has
+                 * its Inlet holes on its centre, an even one between.  The
+                 * difference puts the part's holes on the target's studs. */
+                const ax=['x','y','z'];
+                const pu=studPhase(targ.look.size[ax[i1]])-studPhase(footprintAlong(g.look,u));
+                const pv=studPhase(targ.look.size[ax[i2]])-studPhase(footprintAlong(g.look,v));
+                const su=Math.round(du-pu)+pu-du, sv=Math.round(dv-pv)+pv-dv;
                 np.x+=u.x*su+v.x*sv; np.y+=u.y*su+v.y*sv; np.z+=u.z*su+v.z*sv;
                 /* a hair outside the target prevents z-fighting; AutoJoin
                  * still sees a flush (<=0.05) Studs/Inlet pair */
@@ -827,8 +889,7 @@ class ToolManager {
               }
             }
             if (np){
-              if (window.RBLXenv&&window.RBLXenv.placePart)
-                window.RBLXenv.placePart(g.look.part, {pos:np, rot:g.look.cf.rot});
+              placeDragLook(g.look, np, g.look.cf.rot);
               if (window.RBLXdyn&&window.RBLXdyn._refresh) window.RBLXdyn._refresh(g.look);
               g.starts=[{x:np.x,y:np.y,z:np.z}];
               g.planeP={x:np.x,y:np.y,z:np.z};
@@ -845,14 +906,18 @@ class ToolManager {
                 const flat=ray.origin.clone().addScaledVector(ray.dir,t);
                 const dx=flat.x-g.offset.x-anchor.x, dz=flat.z-g.offset.z-anchor.z;
                 const dyn=window.RBLXdyn;
-                for (let i=0;i<g.members.length;i++){
-                  const m=g.members[i];
-                  if (m.destroyed) continue;
-                  const np2={ x:g.starts[i].x+dx, y:g.starts[i].y, z:g.starts[i].z+dz };
-                  if (window.RBLXenv&&window.RBLXenv.placePart)
-                    window.RBLXenv.placePart(m.part, { pos:np2, rot:m.cf.rot });
-                  else if (m.obj) m.obj.position.set(np2.x, np2.y, np2.z);
-                  if (dyn&&dyn._refresh) dyn._refresh(m);   // grid cells follow
+                const asm=dyn&&dyn.asmMap&&dyn.asmMap.get(g.look);
+                const body=asm&&!asm.static&&asm.members.length<=64;
+                if (body&&dyn.moveAssembly){
+                  dyn.moveAssembly(g.look, { pos:{x:anchor.x+dx, y:anchor.y, z:anchor.z+dz},
+                                             rot:g.look.cf.rot });
+                } else {
+                  for (let i=0;i<g.members.length;i++){
+                    const m=g.members[i];
+                    if (m.destroyed) continue;
+                    placeDragLook(m, { x:g.starts[i].x+dx, y:g.starts[i].y, z:g.starts[i].z+dz }, m.cf.rot);
+                    if (dyn&&dyn._refresh) dyn._refresh(m);   // grid cells follow
+                  }
                 }
               }
             }
