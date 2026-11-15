@@ -2607,6 +2607,22 @@ function fireTouched(inst, hitWrap){
   sig.fire([hitWrap, V3(inst.__tcx||0, inst.__tcy||0, inst.__tcz||0)]);
 }
 
+/* Move a point out of an AABB expanded by `pad` along the contact normal.
+ * The mover probe is a point+radius test, so a resting part has to be
+ * pushed back to the band edge or the gravity step sinks it through the
+ * floor a fraction of a stud every tick. */
+function pushOutOfBox(pos, box, n, pad){
+  let t=Infinity;
+  for (const a of ['x','y','z']){
+    const lo=box.min[a]-pad, hi=box.max[a]+pad;
+    if (pos[a]<lo-1e-9||pos[a]>hi+1e-9) return null;
+    if (n[a]>1e-9) t=Math.min(t,(hi-pos[a])/n[a]);
+    else if (n[a]<-1e-9) t=Math.min(t,(lo-pos[a])/n[a]);
+  }
+  if (!isFinite(t)) return null;
+  return {x:pos.x+n.x*t, y:pos.y+n.y*t, z:pos.z+n.z*t};
+}
+
 function tickContacts(dt){
   const w=state.world;
   if (!w||!w.partLook||!state.workspaceInst) return;
@@ -2624,39 +2640,71 @@ function tickContacts(dt){
     if (!hasV&&!hasRV) continue;
     if (!look.anchored) v.y-=196.2*dt;              /* loose-part gravity */
     const rot=hasRV? spinPartRotation(look.cf.rot, rv, dt) : look.cf.rot;
-    placePart(inst, {pos:{x:look.cf.pos.x+v.x*dt, y:look.cf.pos.y+v.y*dt, z:look.cf.pos.z+v.z*dt}, rot});
-    /* terrain probe: the shipped raycastBoxes probe returns the look.
-     * Contact reflects the velocity off the hit face using the part's
-     * Elasticity (FUN_005ed340), so pellets/skulls bounce instead of
-     * stopping dead on whatever they graze. */
     const rad=Math.max(look.size.x,look.size.y,look.size.z)*0.55;
-    const hit=w.raycastBoxes? w.raycastBoxes(look.cf.pos, {radius:rad}) : null;
-    if (hit&&hit!==look){
+    const from={x:look.cf.pos.x, y:look.cf.pos.y, z:look.cf.pos.z};
+    let to={x:from.x+v.x*dt, y:from.y+v.y*dt, z:from.z+v.z*dt};
+    let hit=null, contact=null;
+    /* Sweep the step along the velocity: a point probe misses a thin wall
+     * when the shell moves more than its radius per tick, which is why fast
+     * pellets tunnelled.  Clamp to the first hit minus the shell radius. */
+    const stepX=to.x-from.x, stepY=to.y-from.y, stepZ=to.z-from.z;
+    const stepLen=Math.hypot(stepX,stepY,stepZ);
+    if (stepLen>1e-9 && w.rayHit){
+      const d={x:stepX/stepLen, y:stepY/stepLen, z:stepZ/stepLen};
+      const ex=look.__sweepExclude||(look.__sweepExclude=new Set([look]));
+      const h=w.rayHit(from, d, stepLen+rad, ex);
+      if (h&&h.look&&h.look!==look&&h.distance>1e-6){
+        hit=h.look;
+        const t=Math.max(0, h.distance-rad);
+        to={x:from.x+d.x*t, y:from.y+d.y*t, z:from.z+d.z*t};
+        contact={x:from.x+d.x*h.distance, y:from.y+d.y*h.distance, z:from.z+d.z*h.distance};
+      }
+    }
+    placePart(inst, {pos:to, rot});
+    if (!hit){
+      const p=w.raycastBoxes? w.raycastBoxes(look.cf.pos, {radius:rad}) : null;
+      if (p&&p!==look) hit=p;
+    }
+    if (hit){
       if (!look.__tc_terrain){
         look.__tc_terrain=true;
         fireTouched(inst, wrap(hit.part));
       }
-      const face=w.partFaceAt? w.partFaceAt(hit, look.cf.pos) : null;
+      const face=w.partFaceAt? w.partFaceAt(hit, contact||look.cf.pos) : null;
       const n=face? face.normal : {x:0,y:1,z:0};
+      if (hit.aabb){
+        const pushed=pushOutOfBox(look.cf.pos, hit.aabb, n, rad);
+        if (pushed&&(pushed.x!==look.cf.pos.x||pushed.y!==look.cf.pos.y||pushed.z!==look.cf.pos.z))
+          placePart(inst, {pos:pushed, rot});
+      }
       const vn=v.x*n.x+v.y*n.y+v.z*n.z;
       if (vn<0){
         const e=(window.RBLXdyn&&window.RBLXdyn.restitutionOf)
           ? window.RBLXdyn.restitutionOf(look) : 0.5;
-        if (n.y>0.7 && -(1+e)*vn<7){
-          /* rest/slide on an up-facing surface: drop the bounce the gravity
-           * tick would otherwise re-trigger forever (7 > one tick at max
-           * restitution, so a real fall still bounces) */
-          v.x-=vn*n.x; v.y-=vn*n.y; v.z-=vn*n.z;
-          if (rv){ rv.x=rv.y=rv.z=0; }
-        } else {
-          v.x-=(1+e)*vn*n.x;
-          v.y-=(1+e)*vn*n.y;
-          v.z-=(1+e)*vn*n.z;
-        }
+        /* split the incoming velocity into normal and tangential; the
+         * normal reflects at the part's Elasticity, the tangential is cut
+         * by Coulomb friction (mu * normal impulse), so a projectile loses
+         * speed on every hit instead of sliding forever */
+        const outgoing=(n.y>0.7 && -(1+e)*vn<7)? 0 : -(1+e)*vn;
+        const tx=v.x-vn*n.x, ty=v.y-vn*n.y, tz=v.z-vn*n.z;
+        const ts=Math.hypot(tx,ty,tz);
+        const mu0=look.friction;
+        const mu=(typeof mu0==='number'&&isFinite(mu0)&&mu0>=0)
+          ? Math.min(1,mu0) : 0.3;
+        const s=ts>1e-9? Math.max(0, ts-mu*Math.abs(vn))/ts : 0;
+        v.x=outgoing*n.x+tx*s;
+        v.y=outgoing*n.y+ty*s;
+        v.z=outgoing*n.z+tz*s;
+        if (!outgoing && rv){ rv.x=rv.y=rv.z=0; }
       }
     } else {
       look.__tc_terrain=false;
     }
+    /* the live mover velocity is the part's Velocity: keep the serialized
+     * property in step so a rebuilt look does not relaunch at the old
+     * launch speed */
+    const pv=inst.props.Velocity||(inst.props.Velocity={x:0,y:0,z:0});
+    pv.x=v.x; pv.y=v.y; pv.z=v.z;
     /* character probe (pellet damage path) */
     if (char()&&char().alive&&look.aabb){
       const ch=char(), p=ch.group.position, a=look.aabb;

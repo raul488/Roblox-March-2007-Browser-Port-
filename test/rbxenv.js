@@ -282,6 +282,8 @@ L.run(L.parse('pellet.Touched:connect(function() hits=hits+1 end)'),()=>{});
 L.sched.tick(0);
 for (let i=0;i<10;i++){ E.fireStepped(1/60); L.sched.tick(0); }
 assert.ok(pelletLook.velocity.x<0,'projectile must bounce off a wall, not stop');
+assert.ok(pelletInst.props.Velocity&&pelletInst.props.Velocity.x<0,
+  'the Velocity property must track the live mover velocity');
 assert.strictEqual(pelletEnv.G.get('hits'),1,'Touched fires once per contact');
 const bounceX=pelletLook.cf.pos.x;
 E.fireStepped(1/60); L.sched.tick(0);
@@ -307,11 +309,52 @@ const dropLook={
 E.state.world.partLook.set(floorInst,floorLook);
 E.state.world.partLook.set(dropInst,dropLook);
 E.state.world.raycastBoxes=p=>(p.y<=0.55? floorLook : null);
+E.state.world.rayHit=(from,dir,maxDist,ex)=>{
+  if (ex&&(ex.has(floorLook)||ex.has(floorInst))) return null;
+  if (dir.y<-0.9&&from.y>=0) return { look:floorLook, distance:from.y };
+  return null;
+};
 E.state.world.partFaceAt=()=>({normal:{x:0,y:1,z:0}});
 E.state.movers.add(dropLook);
 E.fireStepped(1/60); L.sched.tick(0);
 assert.strictEqual(dropLook.velocity.y,0,'a slow floor hit must settle, not bounce');
 assert.ok(dropLook.velocity.x>0,'settling must keep the tangential speed');
+assert.ok(Math.abs(dropLook.cf.pos.y-0.55)<1e-6,'a swept floor hit must not sink');
+for (let i=0;i<120;i++){ E.fireStepped(1/60); L.sched.tick(0); }
+assert.ok(Math.abs(dropLook.cf.pos.y-0.55)<1e-6,'resting mover must not sink through the floor');
+assert.ok(Math.abs(dropLook.velocity.x)<1e-9,'sliding mover must come to rest');
+
+/* A fast mover must not tunnel through a thin wall: the step is swept and
+ * clamped to the hit before the point probe runs. */
+E.state.movers.delete(dropLook);
+const fastInst=E.mkInst('Part','Fast');
+const thinInst=E.mkInst('Part','ThinWall');
+const thinLook={
+  part:thinInst, destroyed:false, size:{x:0.2,y:10,z:10},
+  cf:{pos:{x:4.1,y:3,z:0}, rot:[1,0,0,0,1,0,0,0,1]},
+  aabb:{min:{x:4,y:-2,z:-5},max:{x:4.2,y:8,z:5}},
+  anchored:true, canCollide:true, entry:{rgb:[128,128,128],id:194}
+};
+const fastLook={
+  part:fastInst, destroyed:false, size:{x:1,y:1,z:1},
+  cf:{pos:{x:0,y:3,z:0}, rot:[1,0,0,0,1,0,0,0,1]},
+  aabb:{min:{x:-0.5,y:2.5,z:-0.5},max:{x:0.5,y:3.5,z:0.5}},
+  obj:{}, anchored:false, canCollide:true, elasticity:0.5, friction:0.3,
+  velocity:{x:600,y:0,z:0}, scriptMover:true
+};
+E.state.world.partLook.set(thinInst,thinLook);
+E.state.world.partLook.set(fastInst,fastLook);
+E.state.world.rayHit=(from,dir,maxDist,ex)=>{
+  if (ex&&(ex.has(thinLook)||ex.has(thinInst))) return null;
+  if (dir.x>0.9&&from.x<4&&maxDist>=4-from.x)
+    return { look:thinLook, distance:4-from.x };
+  return null;
+};
+E.state.world.partFaceAt=()=>({normal:{x:-1,y:0,z:0}});
+E.state.movers.add(fastLook);
+E.fireStepped(1/60); L.sched.tick(0);
+assert.ok(fastLook.cf.pos.x<4,'fast mover tunnelled through the thin wall');
+assert.ok(fastLook.velocity.x<0,'fast mover must reflect off the thin wall');
 
 /* The start-page face is applied through the bridge on spawn. */
 const faceCalls=[];
