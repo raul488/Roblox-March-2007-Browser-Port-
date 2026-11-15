@@ -118,9 +118,4 @@ function mkChar(px, pz){
   assert.ok(floor.__charWeld===undefined, 'static floor kept its weld flag');
 }
 
-/* The mover bounce reuses the same mined Elasticity mapping. */
-assert.ok(Math.abs(D.restitutionOf({elasticity:0.5})-0.57)<1e-9);
-assert.ok(Math.abs(D.restitutionOf({})-0.57)<1e-9);
-assert.ok(Math.abs(D.restitutionOf({elasticity:1})-1.0)<1e-9);
-
 console.log('ALL DYNAMICS TESTS PASSED');

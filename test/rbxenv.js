@@ -251,142 +251,74 @@ touchChar.group.position.y=3;               /* re-enter */
 E.fireStepped(1/60); L.sched.tick(0);
 assert.strictEqual(padEnv.G.get('hits'),2);
 
-/* A script-Velocity projectile bounces off terrain instead of sticking to
- * the first thing it touches. */
+/* A script Velocity hands the part to the ordinary force solver: the body
+ * takes the velocity, the solver moves it, and Touched comes from the
+ * solver's world contacts. */
+vm.runInThisContext(fs.readFileSync(path.join(__dirname,'../web/js/dynamics.js'),'utf8'));
 E.forPlace({instances:[]}, null, null, null);
-const pelletInst=E.mkInst('Part','Pellet');
-const wallInst=E.mkInst('Part','Wall');
-const wallLook={
-  part:wallInst, destroyed:false, size:{x:4,y:4,z:4},
-  cf:{pos:{x:5,y:3,z:0}, rot:[1,0,0,0,1,0,0,0,1]},
-  aabb:{min:{x:3,y:1,z:-2},max:{x:7,y:5,z:2}},
-  anchored:true, canCollide:true, entry:{rgb:[128,128,128],id:194}
-};
-const pelletLook={
-  part:pelletInst, destroyed:false, size:{x:1,y:1,z:1},
-  cf:{pos:{x:2,y:3,z:0}, rot:[1,0,0,0,1,0,0,0,1]},
-  aabb:{min:{x:1.5,y:2.5,z:-0.5},max:{x:2.5,y:3.5,z:0.5}},
-  obj:{}, anchored:false, canCollide:true, elasticity:0.5,
-  velocity:{x:10,y:0,z:0}, scriptMover:true
-};
-E.state.world={
-  partLook:new Map([[pelletInst,pelletLook],[wallInst,wallLook]]),
-  colliders:[wallLook],
-  raycastBoxes:p=>(p.x>=2.4? wallLook : null),
-  partFaceAt:()=>({normal:{x:-1,y:0,z:0}})
-};
-E.state.movers.add(pelletLook);
-const pelletEnv=L.makeEnv({pellet:E.wrap(pelletInst)});
-pelletEnv.G.set('hits',0);
-L.run(L.parse('pellet.Touched:connect(function() hits=hits+1 end)'),()=>{});
-L.sched.tick(0);
-for (let i=0;i<10;i++){ E.fireStepped(1/60); L.sched.tick(0); }
-assert.ok(pelletLook.velocity.x<0,'projectile must bounce off a wall, not stop');
-assert.ok(pelletInst.props.Velocity&&pelletInst.props.Velocity.x<0,
-  'the Velocity property must track the live mover velocity');
-assert.strictEqual(pelletEnv.G.get('hits'),1,'Touched fires once per contact');
-const bounceX=pelletLook.cf.pos.x;
-E.fireStepped(1/60); L.sched.tick(0);
-assert.ok(pelletLook.cf.pos.x<bounceX,'projectile must leave the wall after bouncing');
-
-/* A slow up-facing hit settles: the gravity tick must not re-bounce it. */
-E.state.movers.delete(pelletLook);
+const flyInst=E.mkInst('Part','Fly');
 const floorInst=E.mkInst('Part','Floor');
-const dropInst=E.mkInst('Part','Drop');
+const ceilInst=E.mkInst('Part','Ceiling');
+const flyLook={
+  part:flyInst, destroyed:false, size:{x:1,y:1,z:1},
+  cf:{pos:{x:0,y:2,z:0}, rot:[1,0,0,0,1,0,0,0,1]},
+  aabb:{min:{x:-0.5,y:1.5,z:-0.5},max:{x:0.5,y:2.5,z:0.5}},
+  obj:{}, anchored:false, canCollide:true, elasticity:0.5, friction:0.3,
+  surf:[0,0,0,0,0,0], entry:{rgb:[128,128,128],id:194}, velocity:null
+};
 const floorLook={
   part:floorInst, destroyed:false, size:{x:20,y:1,z:20},
   cf:{pos:{x:0,y:-0.5,z:0}, rot:[1,0,0,0,1,0,0,0,1]},
   aabb:{min:{x:-10,y:-1,z:-10},max:{x:10,y:0,z:10}},
-  anchored:true, canCollide:true, entry:{rgb:[128,128,128],id:194}
+  obj:{}, anchored:true, canCollide:true, entry:{rgb:[128,128,128],id:194},
+  surf:[0,0,0,0,0,0]
 };
+E.state.world={
+  partLook:new Map([[flyInst,flyLook],[floorInst,floorLook]]),
+  colliders:[flyLook,floorLook], scene:null
+};
+window.RBLXdyn.init(E.state.world);
+const flyEnv=L.makeEnv({p:E.wrap(flyInst), v:E.V3(20,0,0)});
+flyEnv.G.set('hits',0);
+L.run(L.parse('p.Touched:connect(function() hits=hits+1 end)'),()=>{});
+L.sched.tick(0);
+run(flyEnv,'p.Velocity=v return 1');
+const flyAsm=window.RBLXdyn.asmMap.get(flyLook);
+assert.ok(flyAsm,'the velocity body must be in an assembly');
+assert.ok(Math.abs(flyAsm.vel.x-20)<1e-9,'Velocity must set the body velocity');
+assert.ok(!flyAsm.asleep,'the velocity body must be awake');
+assert.ok(E.state.movers.has(flyLook),'the part must stay in the mover probe set');
+const x0=flyAsm.pos.x;
+E.fireStepped(1/60); L.sched.tick(0);
+assert.ok(Math.abs(flyAsm.pos.x-x0)<1e-9,'tickContacts must not integrate the body');
+window.RBLXdyn.step(1/60);
+assert.ok(flyAsm.pos.x>x0,'the force solver must move the body');
+E.fireStepped(1/60); L.sched.tick(0);
+assert.ok(flyInst.props.Velocity.x>0,'the Velocity property must mirror the solver');
+assert.ok(E.state.movers.has(flyLook),'the probe set survived the solver step');
+
+/* The solver's world contact fires Touched (no custom terrain probe). */
+const dropInst=E.mkInst('Part','Drop');
 const dropLook={
   part:dropInst, destroyed:false, size:{x:1,y:1,z:1},
-  cf:{pos:{x:0,y:0.5,z:0}, rot:[1,0,0,0,1,0,0,0,1]},
-  aabb:{min:{x:-0.5,y:0,z:-0.5},max:{x:0.5,y:1,z:0.5}},
-  obj:{}, anchored:false, canCollide:true, elasticity:0.5,
-  velocity:{x:2,y:0,z:0}, scriptMover:true
+  cf:{pos:{x:5,y:2,z:0}, rot:[1,0,0,0,1,0,0,0,1]},
+  aabb:{min:{x:4.5,y:1.5,z:-0.5},max:{x:5.5,y:2.5,z:0.5}},
+  obj:{}, anchored:false, canCollide:true, elasticity:0.5, friction:0.3,
+  surf:[0,0,0,0,0,0], entry:{rgb:[128,128,128],id:194}, velocity:null
 };
-E.state.world.partLook.set(floorInst,floorLook);
 E.state.world.partLook.set(dropInst,dropLook);
-E.state.world.raycastBoxes=p=>(p.y<=0.55? floorLook : null);
-E.state.world.rayHit=(from,dir,maxDist,ex)=>{
-  if (ex&&(ex.has(floorLook)||ex.has(floorInst))) return null;
-  if (dir.y<-0.9&&from.y>=0&&from.y<=maxDist) return { look:floorLook, distance:from.y };
-  return null;
-};
-E.state.world.partFaceAt=()=>({normal:{x:0,y:1,z:0}});
-E.state.movers.add(dropLook);
-E.fireStepped(1/60); L.sched.tick(0);
-assert.strictEqual(dropLook.velocity.y,0,'a slow floor hit must settle, not bounce');
-assert.ok(dropLook.velocity.x>0,'settling must keep the tangential speed');
-assert.ok(Math.abs(dropLook.cf.pos.y-0.55)<1e-6,'a swept floor hit must not sink');
-for (let i=0;i<120;i++){ E.fireStepped(1/60); L.sched.tick(0); }
-assert.ok(Math.abs(dropLook.cf.pos.y-0.55)<1e-6,'resting mover must not sink through the floor');
-assert.ok(Math.abs(dropLook.velocity.x)<1e-9,'sliding mover must come to rest');
-
-/* A fast mover must not tunnel through a thin wall: the step is swept and
- * clamped to the hit before the point probe runs. */
-E.state.movers.delete(dropLook);
-const fastInst=E.mkInst('Part','Fast');
-const thinInst=E.mkInst('Part','ThinWall');
-const thinLook={
-  part:thinInst, destroyed:false, size:{x:0.2,y:10,z:10},
-  cf:{pos:{x:4.1,y:3,z:0}, rot:[1,0,0,0,1,0,0,0,1]},
-  aabb:{min:{x:4,y:-2,z:-5},max:{x:4.2,y:8,z:5}},
-  anchored:true, canCollide:true, entry:{rgb:[128,128,128],id:194}
-};
-const fastLook={
-  part:fastInst, destroyed:false, size:{x:1,y:1,z:1},
-  cf:{pos:{x:0,y:3,z:0}, rot:[1,0,0,0,1,0,0,0,1]},
-  aabb:{min:{x:-0.5,y:2.5,z:-0.5},max:{x:0.5,y:3.5,z:0.5}},
-  obj:{}, anchored:false, canCollide:true, elasticity:0.5, friction:0.3,
-  velocity:{x:600,y:0,z:0}, scriptMover:true
-};
-E.state.world.partLook.set(thinInst,thinLook);
-E.state.world.partLook.set(fastInst,fastLook);
-E.state.world.rayHit=(from,dir,maxDist,ex)=>{
-  if (ex&&(ex.has(thinLook)||ex.has(thinInst))) return null;
-  if (dir.x>0.9&&from.x<4&&maxDist>=4-from.x)
-    return { look:thinLook, distance:4-from.x };
-  return null;
-};
-E.state.world.partFaceAt=()=>({normal:{x:-1,y:0,z:0}});
-E.state.movers.add(fastLook);
-E.fireStepped(1/60); L.sched.tick(0);
-assert.ok(fastLook.cf.pos.x<4,'fast mover tunnelled through the thin wall');
-assert.ok(fastLook.velocity.x<0,'fast mover must reflect off the thin wall');
-
-/* A bounce must decay: Elasticity 0.5 returns 0.5x the impact speed, not
- * (1+e)x (which would make every bounce faster than the last). */
-E.state.movers.delete(fastLook);
-const bounceInst=E.mkInst('Part','Bounce');
-const bounceLook={
-  part:bounceInst, destroyed:false, size:{x:1,y:1,z:1},
-  cf:{pos:{x:0,y:2,z:0}, rot:[1,0,0,0,1,0,0,0,1]},
-  aabb:{min:{x:-0.5,y:1.5,z:-0.5},max:{x:0.5,y:2.5,z:0.5}},
-  obj:{}, anchored:false, canCollide:true, elasticity:0.5, friction:0.3,
-  velocity:{x:0,y:-20,z:0}, scriptMover:true
-};
-E.state.world.partLook.set(bounceInst,bounceLook);
-E.state.world.rayHit=(from,dir,maxDist,ex)=>{
-  if (ex&&(ex.has(floorLook)||ex.has(floorInst))) return null;
-  if (dir.y<-0.9&&from.y>=0&&from.y<=maxDist) return { look:floorLook, distance:from.y };
-  return null;
-};
-E.state.world.partFaceAt=()=>({normal:{x:0,y:1,z:0}});
-E.state.movers.add(bounceLook);
-let impact=0;
-for (let i=0;i<120&&!bounceLook.__tc_terrain;i++){
-  const vy=bounceLook.velocity.y;
-  E.fireStepped(1/60); L.sched.tick(0);
-  if (bounceLook.__tc_terrain) impact=Math.abs(vy-196.2/60);
-}
-assert.ok(impact>0,'the drop never reached the floor');
-assert.ok(bounceLook.velocity.y>0&&bounceLook.velocity.y<=0.5*impact+0.1,
-  'bounce must decay at Elasticity 0.5, got '+bounceLook.velocity.y+' from '+impact);
-for (let i=0;i<400;i++){ E.fireStepped(1/60); L.sched.tick(0); }
-assert.ok(Math.abs(bounceLook.velocity.y)<1e-6,'the decaying bounce must settle');
-assert.ok(Math.abs(bounceLook.cf.pos.y-0.55)<1e-6,'the settled bounce must rest on the floor');
+E.state.world.colliders.push(dropLook);
+window.RBLXdyn.attach(dropLook);
+const dropEnv=L.makeEnv({p:E.wrap(dropInst), v:E.V3(0,-20,0)});
+dropEnv.G.set('hits',0);
+L.run(L.parse('p.Touched:connect(function() hits=hits+1 end)'),()=>{});
+L.sched.tick(0);
+run(flyEnv,'p.Velocity=v return 1');
+const dropAsm=window.RBLXdyn.asmMap.get(dropLook);
+window.RBLXdyn.step(1/60); L.sched.tick(0);
+for (let i=0;i<39;i++){ window.RBLXdyn.step(1/60); L.sched.tick(0); }
+assert.ok(dropAsm.pos.y>0.3,'the solver must keep the drop above the floor');
+assert.ok(dropEnv.G.get('hits')>=1,'solver contact must fire Touched');
 
 /* The start-page face is applied through the bridge on spawn. */
 const faceCalls=[];

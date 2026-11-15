@@ -626,6 +626,9 @@ class Dynamics {
      * contact, so touching pieces that were blown apart must not silently
      * re-weld on the next ClumpStage. */
     if (this.noJoin.size && this._pairKeyIfKnown(a,b)) return 0;
+    /* Projectiles are rigid bodies, not construction: a script Velocity
+     * must not surface-weld them to the first studded face they graze. */
+    if (a.scriptMover||b.scriptMover) return 0;
     const dot=fa.nx*fb.nx+fa.ny*fb.ny+fa.nz*fb.nz;
     if (dot > -0.9) return 0;                       // must face each other
     const sA=fa.surf, sB=fb.surf;
@@ -1343,18 +1346,6 @@ class Dynamics {
     if (!c||!c.groundLook||!a.sets.has(c.groundLook)) return false;
     return true;
   }
-  /* A part with a script-written Velocity is integrated by rbxenv's mover
-   * path (gravity + terrain probe + Touched).  Running the free-body solver
-   * on the same assembly applied gravity twice and overwrote the mover pose,
-   * so projectiles such as the shipped Harpoon dropped instead of flying. */
-  _isScriptMover(a){
-    if (!a||!a.members) return false;
-    for (const m of a.members) if (m&&m.scriptMover&&!m.destroyed) return true;
-    return false;
-  }
-  /* Elasticity → restitution scalar (FUN_005ed340), shared by the contact
-   * force solver and rbxenv's mover bounce. */
-  restitutionOf(look){ return elasticFactor(elasticityOf(look)); }
   /* World AABBs of the character's body parts.  The classic rig parts are
    * real Parts in Workspace, so makeJoints() can weld a touched model to
    * the torso even though the port renders the rig separately.
@@ -1415,7 +1406,6 @@ class Dynamics {
       if (a.asleep && a.movers.length) a.asleep=false;  // script can command any tick
       if (a.asleep && a.thrusts.length) a.asleep=false;  // BodyThrust keeps pushing
       if (a.asleep) continue;
-      if (this._isScriptMover(a)) continue;           // rbxenv mover owns it
       if (a.hinge){ this._stepHinged(a, dt); continue; }
       if (a.movers.length){
         a.restOn.clear();
@@ -1562,11 +1552,10 @@ class Dynamics {
     /* Gather the bodies this frame actually integrates BEFORE building
      * contact pairs.  A scene at rest (or with only sleepers/static
      * geometry) then costs one array scan instead of a broadphase pass
-     * every 1/60 s.  Hinges and script movers were already stepped in
-     * step(); they are not force-solved here. */
+     * every 1/60 s.  Hinges run their own kinematic pass in step(). */
     const free=[];
     for (const a of this.asms)
-      if (!a.static&&!a.asleep&&!a.hinge&&!a.movers.length&&!this._isScriptMover(a)) free.push(a);
+      if (!a.static&&!a.asleep&&!a.hinge&&!a.movers.length) free.push(a);
     if (!free.length){
       this._pairs=new Map();
       this._pairList=[];
@@ -1580,7 +1569,7 @@ class Dynamics {
       /* a woken sleeper joins this frame's solve, as before */
       free.length=0;
       for (const a of this.asms)
-        if (!a.static&&!a.asleep&&!a.hinge&&!a.movers.length&&!this._isScriptMover(a)) free.push(a);
+        if (!a.static&&!a.asleep&&!a.hinge&&!a.movers.length) free.push(a);
       if (!free.length){ this._pairs=new Map(); this._pairList=[]; return; }
     }
     P.wake=performance.now()-pt;
@@ -1793,7 +1782,7 @@ class Dynamics {
    * displacement accumulator), keyed by the stable support feature so
    * it survives across substeps and frames. */
   _pairMargin(a, dt){
-    if (a.static||a.asleep||a.hinge||a.movers.length||this._isScriptMover(a)) return 0.2;
+    if (a.static||a.asleep||a.hinge||a.movers.length) return 0.2;
     const v=Math.hypot(a.vel.x,a.vel.y,a.vel.z);
     const w=Math.hypot(a.angVel.x,a.angVel.y,a.angVel.z);
     return Math.min(4, 0.2+(v+w*a.radius)*dt*1.5);
@@ -1801,7 +1790,7 @@ class Dynamics {
   _buildPairs(dt){
     const next=new Map();
     for (const a of this.asms){
-      if (a.static||a.asleep||a.hinge||a.movers.length||this._isScriptMover(a)) continue;
+      if (a.static||a.asleep||a.hinge||a.movers.length) continue;
       /* Sweep each body by ITS OWN travel.  One fast blast fragment must not
        * fatten every active body's query by the global maximum (4 studs),
        * creating hundreds of impossible pairs throughout the debris pile. */
@@ -1821,7 +1810,7 @@ class Dynamics {
           /* Hinged and mover-driven assemblies are handled by their own
            * kinematic/legacy paths; static and sleeping bodies are valid
            * contact partners for the force solver. */
-          if (!b||b===a||b.hinge||b.movers.length||this._isScriptMover(b)) continue;
+          if (!b||b===a||b.hinge||b.movers.length) continue;
           const key=this._pairKey(ma,mb);
           if (next.has(key)) continue;
           let p=this._pairs.get(key);

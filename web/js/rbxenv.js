@@ -683,27 +683,6 @@ function liveCF(inst){
   return cf||{pos:{x:0,y:0,z:0}, rot:[1,0,0, 0,1,0, 0,0,1]};
 }
 
-/* RotVelocity is world-space angular velocity (radians/second).  Apply the
- * incremental rotation on the left of the part's row-major CFrame rotation:
- * new local->world = Q(world) * R(local->world). */
-function spinPartRotation(rot, w, dt){
-  const wx=w.x||0, wy=w.y||0, wz=w.z||0;
-  const speed=Math.hypot(wx,wy,wz);
-  if (!(speed>1e-9)||!(dt>0)) return rot;
-  const ux=wx/speed, uy=wy/speed, uz=wz/speed;
-  const a=speed*dt, c=Math.cos(a), s=Math.sin(a), t=1-c;
-  const Q=[
-    t*ux*ux+c,   t*ux*uy-s*uz, t*ux*uz+s*uy,
-    t*ux*uy+s*uz, t*uy*uy+c,   t*uy*uz-s*ux,
-    t*ux*uz-s*uy, t*uy*uz+s*ux, t*uz*uz+c,
-  ];
-  const M=new Array(9);
-  for (let i=0;i<3;i++) for (let j=0;j<3;j++){
-    M[i*3+j]=Q[i*3]*rot[j]+Q[i*3+1]*rot[3+j]+Q[i*3+2]*rot[6+j];
-  }
-  return M;
-}
-
 /* Humanoid fake reads/writes marshal to the runtime character */
 function char(){
   return state.character;
@@ -1919,12 +1898,11 @@ function buildOrRestore(inst){
   }
   if (!look&&w.buildPart){
     const l=w.buildPart(inst);
-    /* A script-created part often sets Velocity before parenting it; the
-     * engine registers the mover as soon as it enters the world. */
-    if (l&&l.velocity&&(l.velocity.x||l.velocity.y||l.velocity.z)){
-      l.scriptMover=true;
-      state.movers.add(l);
-    }
+    /* A script-created part often sets Velocity/RotVelocity before parenting
+     * it; the engine registers the body as soon as it enters the world. */
+    const v=l&&l.velocity, rv=l&&l.rotVelocity;
+    if (l&&((v&&(v.x||v.y||v.z))||(rv&&(rv.x||rv.y||rv.z))))
+      applyBodyVelocity(l, v||{x:0,y:0,z:0});
   }
 }
 
@@ -2397,12 +2375,27 @@ function matchBrickColorId(rgb){
   return best;
 }
 
+function applyBodyVelocity(look, vel){
+  look.velocity={ x:(vel&&vel.x)||0, y:(vel&&vel.y)||0, z:(vel&&vel.z)||0 };
+  look.scriptMover=true;
+  if (look.anchored) return;      /* anchored parts ignore Velocity */
+  state.movers.add(look);
+  /* hand the value to the ordinary rigid body; the force solver applies
+   * gravity, contacts, friction and restitution from here */
+  const D=window.RBLXdyn;
+  const a=D&&D.asmMap&&D.asmMap.get(look);
+  if (a&&!a.static){
+    a.vel={x:look.velocity.x, y:look.velocity.y, z:look.velocity.z};
+    if (look.rotVelocity)
+      a.angVel={x:look.rotVelocity.x||0, y:look.rotVelocity.y||0, z:look.rotVelocity.z||0};
+    a.asleep=false;
+  }
+}
+
 function moverRegister(inst, vel){
   const look=viewLook(inst);
   if (!look||look.destroyed) return;
-  look.velocity={ x:(vel&&vel.x)||0, y:(vel&&vel.y)||0, z:(vel&&vel.z)||0 };
-  look.scriptMover=true;      /* dynamics must not free-fall this body too */
-  state.movers.add(look);
+  applyBodyVelocity(look, vel);
 }
 
 /* ---------- sounds ---------- */
@@ -2607,106 +2600,35 @@ function fireTouched(inst, hitWrap){
   sig.fire([hitWrap, V3(inst.__tcx||0, inst.__tcy||0, inst.__tcz||0)]);
 }
 
-/* Move a point out of an AABB expanded by `pad` along the contact normal.
- * The mover probe is a point+radius test, so a resting part has to be
- * pushed back to the band edge or the gravity step sinks it through the
- * floor a fraction of a stud every tick. */
-function pushOutOfBox(pos, box, n, pad){
-  let t=Infinity;
-  for (const a of ['x','y','z']){
-    const lo=box.min[a]-pad, hi=box.max[a]+pad;
-    if (pos[a]<lo-1e-9||pos[a]>hi+1e-9) return null;
-    if (n[a]>1e-9) t=Math.min(t,(hi-pos[a])/n[a]);
-    else if (n[a]<-1e-9) t=Math.min(t,(lo-pos[a])/n[a]);
-  }
-  if (!isFinite(t)) return null;
-  return {x:pos.x+n.x*t, y:pos.y+n.y*t, z:pos.z+n.z*t};
-}
-
-function tickContacts(dt){
+function tickContacts(){
   const w=state.world;
   if (!w||!w.partLook||!state.workspaceInst) return;
-  /* 1) movers: integrate, then terrain/character probes */
+  /* 1) script-Velocity parts are ordinary free rigid bodies: the force
+   * solver owns their motion and contacts.  This pass mirrors the solved
+   * velocity back to the part properties and fires the character/remote
+   * Touched probes (the solver only knows world parts). */
   for (const look of state.movers){
     const inst=look.part;
     if (!look||look.destroyed||!w.partLook.get(inst)){
       state.movers.delete(look);
       continue;
     }
-    const v=look.velocity||(look.velocity={x:0,y:0,z:0});
-    const rv=look.rotVelocity;
-    const hasV=!!(v.x||v.y||v.z);
-    const hasRV=!!(rv&&(rv.x||rv.y||rv.z));
-    if (!hasV&&!hasRV) continue;
-    if (!look.anchored) v.y-=196.2*dt;              /* loose-part gravity */
-    const rot=hasRV? spinPartRotation(look.cf.rot, rv, dt) : look.cf.rot;
-    const rad=Math.max(look.size.x,look.size.y,look.size.z)*0.55;
-    const from={x:look.cf.pos.x, y:look.cf.pos.y, z:look.cf.pos.z};
-    let to={x:from.x+v.x*dt, y:from.y+v.y*dt, z:from.z+v.z*dt};
-    let hit=null, contact=null;
-    /* Sweep the step along the velocity: a point probe misses a thin wall
-     * when the shell moves more than its radius per tick, which is why fast
-     * pellets tunnelled.  Clamp to the first hit minus the shell radius. */
-    const stepX=to.x-from.x, stepY=to.y-from.y, stepZ=to.z-from.z;
-    const stepLen=Math.hypot(stepX,stepY,stepZ);
-    if (stepLen>1e-9 && w.rayHit){
-      const d={x:stepX/stepLen, y:stepY/stepLen, z:stepZ/stepLen};
-      const ex=look.__sweepExclude||(look.__sweepExclude=new Set([look]));
-      const h=w.rayHit(from, d, stepLen+rad, ex);
-      if (h&&h.look&&h.look!==look&&h.distance>1e-6){
-        hit=h.look;
-        const t=Math.max(0, h.distance-rad);
-        to={x:from.x+d.x*t, y:from.y+d.y*t, z:from.z+d.z*t};
-        contact={x:from.x+d.x*h.distance, y:from.y+d.y*h.distance, z:from.z+d.z*h.distance};
-      }
+    const a=window.RBLXdyn&&window.RBLXdyn.asmMap? window.RBLXdyn.asmMap.get(look) : null;
+    const dyn=a&&!a.static? a : null;
+    const v=dyn&&dyn.vel? dyn.vel : look.velocity;
+    if (v){
+      const lv=look.velocity||(look.velocity={x:0,y:0,z:0});
+      lv.x=v.x; lv.y=v.y; lv.z=v.z;
+      const pv=inst.props.Velocity||(inst.props.Velocity={x:0,y:0,z:0});
+      pv.x=v.x; pv.y=v.y; pv.z=v.z;
     }
-    placePart(inst, {pos:to, rot});
-    if (!hit){
-      const p=w.raycastBoxes? w.raycastBoxes(look.cf.pos, {radius:rad}) : null;
-      if (p&&p!==look) hit=p;
+    const rv=dyn&&dyn.angVel? dyn.angVel : look.rotVelocity;
+    if (rv){
+      const lr=look.rotVelocity||(look.rotVelocity={x:0,y:0,z:0});
+      lr.x=rv.x; lr.y=rv.y; lr.z=rv.z;
+      const pr=inst.props.RotVelocity||(inst.props.RotVelocity={x:0,y:0,z:0});
+      pr.x=rv.x; pr.y=rv.y; pr.z=rv.z;
     }
-    if (hit){
-      if (!look.__tc_terrain){
-        look.__tc_terrain=true;
-        fireTouched(inst, wrap(hit.part));
-      }
-      const face=w.partFaceAt? w.partFaceAt(hit, contact||look.cf.pos) : null;
-      const n=face? face.normal : {x:0,y:1,z:0};
-      if (hit.aabb){
-        const pushed=pushOutOfBox(look.cf.pos, hit.aabb, n, rad);
-        if (pushed&&(pushed.x!==look.cf.pos.x||pushed.y!==look.cf.pos.y||pushed.z!==look.cf.pos.z))
-          placePart(inst, {pos:pushed, rot});
-      }
-      const vn=v.x*n.x+v.y*n.y+v.z*n.z;
-      if (vn<0){
-        const e=(window.RBLXdyn&&window.RBLXdyn.restitutionOf)
-          ? window.RBLXdyn.restitutionOf(look) : 0.5;
-        /* v' = v - (1+e)(v·n)n: the normal speed after the hit is e|vn|,
-         * not (1+e)|vn| (which would add energy on every bounce) */
-        const bounce=-e*vn;
-        const outgoing=(n.y>0.7 && bounce<7)? 0 : bounce;
-        const tx=v.x-vn*n.x, ty=v.y-vn*n.y, tz=v.z-vn*n.z;
-        const ts=Math.hypot(tx,ty,tz);
-        const mu0=look.friction;
-        const mu=(typeof mu0==='number'&&isFinite(mu0)&&mu0>=0)
-          ? Math.min(1,mu0) : 0.3;
-        /* Coulomb friction follows the normal impulse: the bounce reverses
-         * the normal speed, a resting hit only cancels the gravity tick */
-        const jn=(outgoing? (1+e) : 1)*Math.abs(vn);
-        const s=ts>1e-9? Math.max(0, ts-mu*jn)/ts : 0;
-        v.x=outgoing*n.x+tx*s;
-        v.y=outgoing*n.y+ty*s;
-        v.z=outgoing*n.z+tz*s;
-        if (!outgoing && rv){ rv.x=rv.y=rv.z=0; }
-      }
-    } else {
-      look.__tc_terrain=false;
-    }
-    /* the live mover velocity is the part's Velocity: keep the serialized
-     * property in step so a rebuilt look does not relaunch at the old
-     * launch speed */
-    const pv=inst.props.Velocity||(inst.props.Velocity={x:0,y:0,z:0});
-    pv.x=v.x; pv.y=v.y; pv.z=v.z;
     /* character probe (pellet damage path) */
     if (char()&&char().alive&&look.aabb){
       const ch=char(), p=ch.group.position, a=look.aabb;
@@ -2739,7 +2661,7 @@ function tickContacts(dt){
   for (const inst of state.watchSet){
     const look=w.partLook.get(inst);
     if (!look||look.destroyed||!look.aabb) continue;
-    if (state.movers.has(look)) continue;          /* movers already probe in §1 */
+    if (state.movers.has(look)) continue;          /* projectiles already probe in §1 */
     if (enterFlag(look, '__touchIn')) fireTouched(inst, wrap(state.torsoInst));
     if (state.netPlayers.size){
       if (!look.__netIn) look.__netIn=new Map();
@@ -2830,7 +2752,7 @@ function applyCharacterMovers(dt){
 function fireStepped(dt){
   if (!state.gameInst) return;
   applyCharacterMovers(dt);
-  tickContacts(dt);
+  tickContacts();
   tickSoundPositions();
   stepDebris(dt);
   stepExplosions(dt);
